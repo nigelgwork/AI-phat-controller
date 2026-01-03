@@ -79,25 +79,35 @@ export default function GraphPage() {
         },
       });
 
-      // Create edges for dependencies
+      // Create edges for dependencies (check both depends_on array and dependencies array)
+      const depIds = new Set<string>();
+
+      // From depends_on array
       if (bead.depends_on) {
-        bead.depends_on.forEach((depId) => {
-          if (beadMap.has(depId)) {
-            edges.push({
-              id: `${depId}-${bead.id}`,
-              source: depId,
-              target: bead.id,
-              type: "smoothstep",
-              animated: bead.status === "in_progress",
-              style: { stroke: "#52525b", strokeWidth: 2 },
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                color: "#52525b",
-              },
-            });
-          }
-        });
+        bead.depends_on.forEach((id) => depIds.add(id));
       }
+
+      // From dependencies array (has depends_on_id field)
+      if (bead.dependencies) {
+        bead.dependencies.forEach((d) => depIds.add(d.depends_on_id));
+      }
+
+      depIds.forEach((depId) => {
+        if (beadMap.has(depId)) {
+          edges.push({
+            id: `${depId}-${bead.id}`,
+            source: depId,
+            target: bead.id,
+            type: "smoothstep",
+            animated: bead.status === "in_progress",
+            style: { stroke: "#52525b", strokeWidth: 2 },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#52525b",
+            },
+          });
+        }
+      });
     });
 
     return { nodes, edges };

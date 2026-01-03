@@ -46,26 +46,27 @@ export function parseBeadsFile(filePath: string): Bead[] {
 }
 
 export function getAllBeads(rig?: string): Bead[] {
-  if (rig) {
-    const filePath = getBeadsFilePath(rig);
-    return parseBeadsFile(filePath);
-  }
-
-  // Aggregate beads from town level + all rigs
   let allBeads: Bead[] = [];
 
-  // Town level beads
-  const townBeads = parseBeadsFile(getBeadsFilePath());
-  allBeads = allBeads.concat(townBeads);
+  if (rig) {
+    const filePath = getBeadsFilePath(rig);
+    allBeads = parseBeadsFile(filePath);
+  } else {
+    // Aggregate beads from town level + all rigs
+    // Town level beads
+    const townBeads = parseBeadsFile(getBeadsFilePath());
+    allBeads = allBeads.concat(townBeads);
 
-  // All rig beads
-  const rigs = getAvailableRigs();
-  for (const rigName of rigs) {
-    const rigBeads = parseBeadsFile(getBeadsFilePath(rigName));
-    allBeads = allBeads.concat(rigBeads);
+    // All rig beads
+    const rigs = getAvailableRigs();
+    for (const rigName of rigs) {
+      const rigBeads = parseBeadsFile(getBeadsFilePath(rigName));
+      allBeads = allBeads.concat(rigBeads);
+    }
   }
 
-  return allBeads;
+  // Filter out deleted/tombstone beads
+  return allBeads.filter((b) => b.status !== "tombstone");
 }
 
 export function getBeadById(id: string, rig?: string): Bead | undefined {
