@@ -46,8 +46,26 @@ export function parseBeadsFile(filePath: string): Bead[] {
 }
 
 export function getAllBeads(rig?: string): Bead[] {
-  const filePath = getBeadsFilePath(rig);
-  return parseBeadsFile(filePath);
+  if (rig) {
+    const filePath = getBeadsFilePath(rig);
+    return parseBeadsFile(filePath);
+  }
+
+  // Aggregate beads from town level + all rigs
+  let allBeads: Bead[] = [];
+
+  // Town level beads
+  const townBeads = parseBeadsFile(getBeadsFilePath());
+  allBeads = allBeads.concat(townBeads);
+
+  // All rig beads
+  const rigs = getAvailableRigs();
+  for (const rigName of rigs) {
+    const rigBeads = parseBeadsFile(getBeadsFilePath(rigName));
+    allBeads = allBeads.concat(rigBeads);
+  }
+
+  return allBeads;
 }
 
 export function getBeadById(id: string, rig?: string): Bead | undefined {
@@ -88,8 +106,11 @@ export function getBeadsStats(rig?: string) {
   };
 }
 
-export function getEventsFilePath(): string {
+export function getEventsFilePath(rig?: string): string {
   const basePath = expandPath(GASTOWN_PATH);
+  if (rig) {
+    return `${basePath}/${rig}/.events.jsonl`;
+  }
   return `${basePath}/.events.jsonl`;
 }
 
@@ -122,8 +143,7 @@ interface RawEvent {
   visibility: string;
 }
 
-export function getRecentEvents(limit = 10): TownEvent[] {
-  const filePath = getEventsFilePath();
+function parseEventsFile(filePath: string): TownEvent[] {
   const expandedPath = expandPath(filePath);
 
   if (!existsSync(expandedPath)) {
@@ -134,7 +154,7 @@ export function getRecentEvents(limit = 10): TownEvent[] {
     const content = readFileSync(expandedPath, "utf-8");
     const lines = content.trim().split("\n").filter(Boolean);
 
-    const events = lines
+    return lines
       .map((line) => {
         try {
           const raw = JSON.parse(line) as RawEvent;
@@ -149,13 +169,27 @@ export function getRecentEvents(limit = 10): TownEvent[] {
         }
       })
       .filter((e): e is TownEvent => e !== null);
-
-    // Return most recent events
-    return events.slice(-limit).reverse();
-  } catch (error) {
-    console.error("Failed to read events file:", error);
+  } catch {
     return [];
   }
+}
+
+export function getRecentEvents(limit = 10): TownEvent[] {
+  let allEvents: TownEvent[] = [];
+
+  // Town level events
+  allEvents = allEvents.concat(parseEventsFile(getEventsFilePath()));
+
+  // All rig events
+  const rigs = getAvailableRigs();
+  for (const rigName of rigs) {
+    const rigEvents = parseEventsFile(getEventsFilePath(rigName));
+    allEvents = allEvents.concat(rigEvents);
+  }
+
+  // Sort by timestamp descending and return most recent
+  allEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return allEvents.slice(0, limit);
 }
 
 function formatEventMessage(event: RawEvent): string {
