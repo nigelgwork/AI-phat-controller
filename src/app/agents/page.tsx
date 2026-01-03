@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
   Users,
   Crown,
@@ -52,11 +53,13 @@ async function triggerHandoff(agentId: string) {
 }
 
 export default function AgentsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["agents"],
     queryFn: fetchAgents,
+    refetchInterval: 5000,
   });
 
   const handoffMutation = useMutation({
@@ -160,6 +163,7 @@ export default function AgentsPage() {
                       agent={agent}
                       onHandoff={() => handoffMutation.mutate(agent.id)}
                       isHandingOff={handoffMutation.isPending}
+                      onViewMail={() => router.push(`/mail?agent=${agent.id}`)}
                     />
                   ))}
                 </div>
@@ -176,10 +180,12 @@ function AgentCard({
   agent,
   onHandoff,
   isHandingOff,
+  onViewMail,
 }: {
   agent: Agent;
   onHandoff: () => void;
   isHandingOff: boolean;
+  onViewMail: () => void;
 }) {
   const RoleIcon = ROLE_ICONS[agent.role] || Users;
 
@@ -218,6 +224,7 @@ function AgentCard({
 
         <div className="flex items-center gap-2">
           <button
+            onClick={onViewMail}
             className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
             title="View Mail"
           >

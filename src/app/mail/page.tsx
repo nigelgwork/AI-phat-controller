@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import {
   Mail,
   Inbox,
@@ -12,7 +13,7 @@ import {
   Check,
   Circle,
 } from "lucide-react";
-import { Mail as MailType } from "@/types/gastown";
+import { Mail as MailType, Agent } from "@/types/gastown";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 async function fetchInbox(agent: string) {
@@ -25,9 +26,23 @@ async function fetchAnnounces() {
   return res.json();
 }
 
+async function fetchAgents() {
+  const res = await fetch("/api/agents");
+  return res.json();
+}
+
 export default function MailPage() {
-  const [selectedAgent, setSelectedAgent] = useState("mayor");
+  const searchParams = useSearchParams();
+  const agentFromUrl = searchParams.get("agent");
+  const [selectedAgent, setSelectedAgent] = useState(agentFromUrl || "gt-mayor");
   const [view, setView] = useState<"inbox" | "announces">("inbox");
+
+  // Update selected agent when URL param changes
+  useEffect(() => {
+    if (agentFromUrl) {
+      setSelectedAgent(agentFromUrl);
+    }
+  }, [agentFromUrl]);
 
   const { data: inboxData, isLoading: loadingInbox } = useQuery({
     queryKey: ["mail", "inbox", selectedAgent],
@@ -41,14 +56,21 @@ export default function MailPage() {
     enabled: view === "announces",
   });
 
+  const { data: agentsData } = useQuery({
+    queryKey: ["agents"],
+    queryFn: fetchAgents,
+    refetchInterval: 10000,
+  });
+
   const messages: MailType[] =
     view === "inbox"
       ? inboxData?.messages || []
       : announcesData?.messages || [];
 
   const isLoading = view === "inbox" ? loadingInbox : loadingAnnounces;
+  const mailAvailable = view === "inbox" ? inboxData?.available : announcesData?.available;
 
-  const agents = ["mayor", "witness", "refinery", "polecat-1", "polecat-2"];
+  const agents: Agent[] = agentsData?.agents || [];
 
   return (
     <div className="space-y-6">
@@ -102,21 +124,25 @@ export default function MailPage() {
               <p className="mb-2 px-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
                 Agent
               </p>
-              {agents.map((agent) => (
-                <button
-                  key={agent}
-                  onClick={() => setSelectedAgent(agent)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-                    selectedAgent === agent
-                      ? "bg-zinc-800 text-zinc-100"
-                      : "text-zinc-400 hover:text-zinc-100"
-                  )}
-                >
-                  <Mail className="h-4 w-4" />
-                  {agent}
-                </button>
-              ))}
+              {agents.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-zinc-500">No agents available</p>
+              ) : (
+                agents.map((agent) => (
+                  <button
+                    key={agent.id}
+                    onClick={() => setSelectedAgent(agent.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                      selectedAgent === agent.id
+                        ? "bg-zinc-800 text-zinc-100"
+                        : "text-zinc-400 hover:text-zinc-100"
+                    )}
+                  >
+                    <Mail className="h-4 w-4" />
+                    {agent.id}
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -131,10 +157,12 @@ export default function MailPage() {
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-12 text-center">
               <Mail className="mx-auto h-12 w-12 text-zinc-600" />
               <h3 className="mt-4 text-lg font-medium text-zinc-300">
-                No messages
+                {mailAvailable === false ? "Mail not configured" : "No messages"}
               </h3>
               <p className="mt-2 text-sm text-zinc-500">
-                {view === "inbox"
+                {mailAvailable === false
+                  ? "Mail will appear here when agents communicate via gt mail."
+                  : view === "inbox"
                   ? `${selectedAgent}'s inbox is empty.`
                   : "No announcements yet."}
               </p>
