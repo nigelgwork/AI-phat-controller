@@ -1,30 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getInsights, getExecutionPlan, getPriorityRecommendations } from "@/lib/gastown";
+import { computeInsights } from "@/lib/insights";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const type = searchParams.get("type") || "insights";
+  const rig = searchParams.get("rig") || undefined;
 
   try {
-    switch (type) {
-      case "plan": {
-        const plan = getExecutionPlan();
-        return NextResponse.json({ plan });
-      }
-      case "priority": {
-        const recommendations = getPriorityRecommendations();
-        return NextResponse.json({ recommendations });
-      }
-      case "insights":
-      default: {
-        const insights = getInsights();
-        return NextResponse.json({ insights });
-      }
-    }
+    const insights = computeInsights(rig);
+    return NextResponse.json({ insights });
   } catch (error) {
-    console.error("Failed to fetch insights:", error);
+    console.error("Failed to compute insights:", error);
     return NextResponse.json(
-      { error: "Failed to fetch insights" },
+      { error: "Failed to compute insights" },
       { status: 500 }
     );
   }
