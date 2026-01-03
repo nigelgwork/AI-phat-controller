@@ -29,20 +29,34 @@ async function fetchConvoys() {
   return res.json();
 }
 
+async function fetchEvents() {
+  const res = await fetch("/api/beads?events=true&limit=5");
+  return res.json();
+}
+
 export default function HomePage() {
   const { data: beadsData } = useQuery({
     queryKey: ["beads-stats"],
     queryFn: fetchBeadsStats,
+    refetchInterval: 5000,
   });
 
   const { data: agentsData } = useQuery({
     queryKey: ["agents"],
     queryFn: fetchAgents,
+    refetchInterval: 5000,
   });
 
   const { data: convoysData } = useQuery({
     queryKey: ["convoys"],
     queryFn: fetchConvoys,
+    refetchInterval: 5000,
+  });
+
+  const { data: eventsData } = useQuery({
+    queryKey: ["events"],
+    queryFn: fetchEvents,
+    refetchInterval: 5000,
   });
 
   const stats = beadsData?.stats || {
@@ -55,30 +69,16 @@ export default function HomePage() {
 
   const agents: Agent[] = agentsData?.agents || [];
   const convoys: Convoy[] = convoysData?.convoys || [];
+  const recentEvents: TownEvent[] = eventsData?.events || [];
 
   const activeAgents = agents.filter((a) => a.status === "working").length;
   const activeConvoys = convoys.filter((c) => c.status === "active").length;
 
-  const recentEvents: TownEvent[] = [
-    {
-      type: "bead_closed",
-      timestamp: new Date().toISOString(),
-      data: { id: "gt-001" },
-      message: "polecat-3 completed task gt-001",
-    },
-    {
-      type: "convoy_milestone",
-      timestamp: new Date(Date.now() - 300000).toISOString(),
-      data: { id: "convoy-2" },
-      message: "convoy-alpha hit 50% milestone",
-    },
-    {
-      type: "agent_spawned",
-      timestamp: new Date(Date.now() - 600000).toISOString(),
-      data: { id: "polecat-5" },
-      message: "polecat-5 spawned for api rig",
-    },
-  ];
+  // Calculate system health based on blocked items and data availability
+  const hasData = stats.total > 0 || recentEvents.length > 0;
+  const blockedRatio = stats.total > 0 ? stats.blocked / stats.total : 0;
+  const healthPercent = hasData ? Math.round((1 - blockedRatio) * 100) : 0;
+  const healthStatus = !hasData ? "No data" : healthPercent > 90 ? "All systems operational" : healthPercent > 70 ? "Minor issues" : "Attention needed";
 
   return (
     <div className="space-y-6">
@@ -120,8 +120,8 @@ export default function HomePage() {
         />
         <StatCard
           title="System Health"
-          value="98%"
-          subtitle="All systems operational"
+          value={hasData ? `${healthPercent}%` : "—"}
+          subtitle={healthStatus}
           icon={Activity}
         />
       </div>
@@ -202,31 +202,37 @@ export default function HomePage() {
           <h2 className="mb-4 text-lg font-semibold text-zinc-100">
             Recent Events
           </h2>
-          <div className="space-y-3">
-            {recentEvents.map((event, idx) => (
-              <div
-                key={idx}
-                className="flex items-start gap-3 rounded-lg bg-zinc-800/50 p-3"
-              >
-                <div className="mt-0.5">
-                  {event.type.includes("completed") ||
-                  event.type.includes("closed") ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : event.type.includes("stuck") ? (
-                    <AlertCircle className="h-4 w-4 text-red-500" />
-                  ) : (
-                    <Activity className="h-4 w-4 text-blue-500" />
-                  )}
+          {recentEvents.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              No recent events. Events will appear here when Gas Town is active.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {recentEvents.map((event, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-3 rounded-lg bg-zinc-800/50 p-3"
+                >
+                  <div className="mt-0.5">
+                    {event.type.includes("completed") ||
+                    event.type.includes("closed") ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : event.type.includes("stuck") ? (
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                    ) : (
+                      <Activity className="h-4 w-4 text-blue-500" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-zinc-300">{event.message}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {new Date(event.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-zinc-300">{event.message}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
-                    {new Date(event.timestamp).toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

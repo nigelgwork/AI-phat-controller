@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from "fs";
-import { Bead } from "@/types/gastown";
+import { Bead, TownEvent } from "@/types/gastown";
 
 const GASTOWN_PATH = process.env.GASTOWN_PATH || "~/gt";
 
@@ -13,9 +13,9 @@ function expandPath(path: string): string {
 export function getBeadsFilePath(rig?: string): string {
   const basePath = expandPath(GASTOWN_PATH);
   if (rig) {
-    return `${basePath}/rigs/${rig}/.beads/beads.jsonl`;
+    return `${basePath}/rigs/${rig}/.beads/issues.jsonl`;
   }
-  return `${basePath}/.beads/beads.jsonl`;
+  return `${basePath}/.beads/issues.jsonl`;
 }
 
 export function parseBeadsFile(filePath: string): Bead[] {
@@ -84,4 +84,78 @@ export function getBeadsStats(rig?: string) {
     ready: beads.filter((b) => b.status === "ready").length,
     actionable: getActionableBeads(rig).length,
   };
+}
+
+export function getEventsFilePath(): string {
+  const basePath = expandPath(GASTOWN_PATH);
+  return `${basePath}/.events.jsonl`;
+}
+
+interface RawEvent {
+  ts: string;
+  source: string;
+  type: string;
+  actor: string;
+  payload: Record<string, unknown>;
+  visibility: string;
+}
+
+export function getRecentEvents(limit = 10): TownEvent[] {
+  const filePath = getEventsFilePath();
+  const expandedPath = expandPath(filePath);
+
+  if (!existsSync(expandedPath)) {
+    return [];
+  }
+
+  try {
+    const content = readFileSync(expandedPath, "utf-8");
+    const lines = content.trim().split("\n").filter(Boolean);
+
+    const events = lines
+      .map((line) => {
+        try {
+          const raw = JSON.parse(line) as RawEvent;
+          return {
+            type: raw.type,
+            timestamp: raw.ts,
+            data: raw.payload,
+            message: formatEventMessage(raw),
+          } as TownEvent;
+        } catch {
+          return null;
+        }
+      })
+      .filter((e): e is TownEvent => e !== null);
+
+    // Return most recent events
+    return events.slice(-limit).reverse();
+  } catch (error) {
+    console.error("Failed to read events file:", error);
+    return [];
+  }
+}
+
+function formatEventMessage(event: RawEvent): string {
+  const payload = event.payload as Record<string, string>;
+  switch (event.type) {
+    case "session_start":
+      return `${event.actor} session started (${payload.session_id || "unknown"})`;
+    case "session_end":
+      return `${event.actor} session ended`;
+    case "bead_created":
+      return `New bead created: ${payload.id || "unknown"}`;
+    case "bead_closed":
+      return `Bead closed: ${payload.id || "unknown"}`;
+    case "convoy_created":
+      return `Convoy created: ${payload.name || payload.id || "unknown"}`;
+    case "convoy_closed":
+      return `Convoy completed: ${payload.name || payload.id || "unknown"}`;
+    case "agent_spawned":
+      return `Agent spawned: ${payload.role || event.actor}`;
+    case "handoff":
+      return `Handoff: ${event.actor} → ${payload.to || "next session"}`;
+    default:
+      return `${event.type}: ${event.actor}`;
+  }
 }

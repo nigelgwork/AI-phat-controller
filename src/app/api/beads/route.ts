@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllBeads, getBeadsByStatus, getActionableBeads, getBeadsStats } from "@/lib/beads";
+import { getAllBeads, getBeadsByStatus, getActionableBeads, getBeadsStats, getRecentEvents } from "@/lib/beads";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -7,8 +7,15 @@ export async function GET(request: NextRequest) {
   const rig = searchParams.get("rig") || undefined;
   const actionable = searchParams.get("actionable") === "true";
   const statsOnly = searchParams.get("stats") === "true";
+  const events = searchParams.get("events") === "true";
 
   try {
+    if (events) {
+      const limit = parseInt(searchParams.get("limit") || "10", 10);
+      const recentEvents = getRecentEvents(limit);
+      return NextResponse.json({ events: recentEvents });
+    }
+
     if (statsOnly) {
       const stats = getBeadsStats(rig);
       return NextResponse.json({ stats });
