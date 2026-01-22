@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { promisify } from "util";
-import { join } from "path";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,30 +25,48 @@ async function runClaudeCode(message: string): Promise<string> {
     GASTOWN_PATH: gastownPath,
   };
 
-  // Use the bridge script for better process handling
-  const scriptPath = "/root/ai-controller/scripts/claude-bridge.sh";
+  // Use spawn with stdin ignored to prevent Claude from waiting for input
+  return new Promise((resolve, reject) => {
+    const child = spawn("/usr/bin/claude", [
+      "--print",
+      "--output-format", "text",
+      "--no-session-persistence",
+      "--system-prompt", getSystemPrompt(gastownPath),
+      message
+    ], {
+      env,
+      cwd: gastownPath,
+      stdio: ["ignore", "pipe", "pipe"], // Critical: ignore stdin
+    });
 
-  try {
-    const { stdout, stderr } = await execFileAsync(
-      "/bin/bash",
-      [scriptPath, getSystemPrompt(gastownPath), message],
-      {
-        env,
-        cwd: gastownPath,
-        timeout: 120000,
-        maxBuffer: 10 * 1024 * 1024,
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data) => { stdout += data; });
+    child.stderr.on("data", (data) => { stderr += data; });
+
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error("Claude Code timed out after 120 seconds"));
+    }, 120000);
+
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(stdout.trim() || stderr.trim() || "Command completed.");
+      } else if (stdout.trim()) {
+        // Return output even on non-zero exit
+        resolve(stdout.trim());
+      } else {
+        reject(new Error(stderr.trim() || `Claude Code exited with code ${code}`));
       }
-    );
+    });
 
-    return stdout.trim() || stderr.trim() || "Command completed.";
-  } catch (error: unknown) {
-    const err = error as { stdout?: string; stderr?: string; message?: string };
-    // Return any output even if there was an error
-    if (err.stdout?.trim()) {
-      return err.stdout.trim();
-    }
-    throw new Error(err.stderr || err.message || "Claude Code failed");
-  }
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
 }
 
 // Run gt/bd commands directly

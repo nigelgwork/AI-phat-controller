@@ -5,4 +5,9 @@
 SYSTEM_PROMPT="$1"
 USER_MESSAGE="$2"
 
-exec /usr/bin/claude --print --system-prompt "$SYSTEM_PROMPT" "$USER_MESSAGE"
+exec /usr/bin/claude \
+  --print \
+  --output-format text \
+  --no-session-persistence \
+  --system-prompt "$SYSTEM_PROMPT" \
+  "$USER_MESSAGE"
