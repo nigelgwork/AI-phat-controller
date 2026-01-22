@@ -11,14 +11,14 @@ import {
   GitBranch,
   Mail,
   Settings,
-  Fuel,
-  Terminal,
+  Cpu,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
-  { name: "Mayor", href: "/terminal", icon: Terminal },
+  { name: "Controller", href: "/terminal", icon: MessageSquare },
   { name: "Agents", href: "/agents", icon: Users },
   { name: "Convoys", href: "/convoys", icon: Truck },
   { name: "Beads", href: "/beads", icon: CircleDot },
@@ -34,8 +34,8 @@ export function Sidebar() {
     <aside className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950">
       {/* Logo */}
       <div className="flex h-16 items-center gap-2 border-b border-zinc-800 px-6">
-        <Fuel className="h-6 w-6 text-amber-500" />
-        <span className="text-lg font-bold text-zinc-100">Gas Town</span>
+        <Cpu className="h-6 w-6 text-cyan-500" />
+        <span className="text-lg font-bold text-zinc-100">AI Controller</span>
       </div>
 
       {/* Navigation */}

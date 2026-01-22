@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, Terminal, Trash2, AlertTriangle, Key } from "lucide-react";
+import { Send, Bot, User, Loader2, Cpu, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
 
 interface Message {
   id: string;
@@ -10,23 +10,23 @@ interface Message {
   timestamp: Date;
 }
 
-export default function MayorChatPage() {
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+export default function ControllerChatPage() {
+  const [hasClaudeCode, setHasClaudeCode] = useState<boolean | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
       role: "system",
-      content: "Connected to Gas Town Mayor. Type a message to coordinate work across your rigs.",
+      content: "Connected to AI Controller. Powered by Claude Code. Type a message to coordinate work across your rigs.",
       timestamp: new Date(),
     },
   ]);
 
   useEffect(() => {
-    // Check if API key is configured
+    // Check if Claude Code is available
     fetch("/api/mayor/status")
       .then((res) => res.json())
-      .then((data) => setHasApiKey(data.hasApiKey))
-      .catch(() => setHasApiKey(false));
+      .then((data) => setHasClaudeCode(data.hasClaudeCode))
+      .catch(() => setHasClaudeCode(false));
   }, []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -68,7 +68,7 @@ export default function MayorChatPage() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.response || data.error || "No response from Mayor",
+        content: data.response || data.error || "No response from Controller",
         timestamp: new Date(),
       };
 
@@ -77,7 +77,7 @@ export default function MayorChatPage() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: `Error: ${error instanceof Error ? error.message : "Failed to reach Mayor"}`,
+        content: `Error: ${error instanceof Error ? error.message : "Failed to reach Controller"}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -107,42 +107,44 @@ export default function MayorChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* API Key Warning */}
-      {hasApiKey === false && (
+      {/* Status Banner */}
+      {hasClaudeCode === true && (
+        <div className="flex items-center gap-3 border-b border-cyan-500/30 bg-cyan-500/10 px-6 py-3">
+          <CheckCircle className="h-5 w-5 text-cyan-500" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-cyan-200">
+              AI Controller Ready
+            </p>
+            <p className="text-xs text-cyan-300/70">
+              Run Gas Town commands directly: <code className="bg-cyan-500/20 px-1 rounded">gt rig list</code>, <code className="bg-cyan-500/20 px-1 rounded">bd list</code>, etc.
+            </p>
+          </div>
+        </div>
+      )}
+      {hasClaudeCode === false && (
         <div className="flex items-center gap-3 border-b border-amber-500/30 bg-amber-500/10 px-6 py-3">
           <AlertTriangle className="h-5 w-5 text-amber-500" />
           <div className="flex-1">
             <p className="text-sm font-medium text-amber-200">
-              Anthropic API Key Required
+              Claude Code Not Found
             </p>
             <p className="text-xs text-amber-300/70">
-              Add <code className="rounded bg-amber-500/20 px-1">ANTHROPIC_API_KEY</code> to your{" "}
-              <code className="rounded bg-amber-500/20 px-1">.env.local</code> file to enable AI-powered chat.
-              Currently running in command-only mode.
+              Install Claude Code CLI for full functionality.
             </p>
           </div>
-          <a
-            href="https://console.anthropic.com/settings/keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-amber-400"
-          >
-            <Key className="h-3 w-3" />
-            Get API Key
-          </a>
         </div>
       )}
 
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/20">
-            <Terminal className="h-5 w-5 text-amber-500" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/20">
+            <Cpu className="h-5 w-5 text-cyan-500" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-zinc-100">Mayor Chat</h1>
+            <h1 className="text-lg font-semibold text-zinc-100">AI Controller</h1>
             <p className="text-sm text-zinc-400">
-              {hasApiKey ? "AI-powered coordination" : "Command mode (add API key for AI chat)"}
+              {hasClaudeCode ? "Powered by Claude Code" : "Command mode (install Claude Code for AI)"}
             </p>
           </div>
         </div>
@@ -169,12 +171,12 @@ export default function MayorChatPage() {
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
                   message.role === "system"
                     ? "bg-zinc-800"
-                    : "bg-amber-500/20"
+                    : "bg-cyan-500/20"
                 }`}
               >
                 <Bot
                   className={`h-4 w-4 ${
-                    message.role === "system" ? "text-zinc-400" : "text-amber-500"
+                    message.role === "system" ? "text-zinc-400" : "text-cyan-500"
                   }`}
                 />
               </div>
@@ -182,7 +184,7 @@ export default function MayorChatPage() {
             <div
               className={`max-w-[80%] rounded-lg px-4 py-3 ${
                 message.role === "user"
-                  ? "bg-blue-600 text-white"
+                  ? "bg-cyan-600 text-white"
                   : message.role === "system"
                   ? "bg-zinc-800/50 text-zinc-400 italic"
                   : "bg-zinc-800 text-zinc-100"
@@ -193,14 +195,14 @@ export default function MayorChatPage() {
               </pre>
               <div
                 className={`mt-1 text-xs ${
-                  message.role === "user" ? "text-blue-200" : "text-zinc-500"
+                  message.role === "user" ? "text-cyan-200" : "text-zinc-500"
                 }`}
               >
                 {message.timestamp.toLocaleTimeString()}
               </div>
             </div>
             {message.role === "user" && (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-600">
                 <User className="h-4 w-4 text-white" />
               </div>
             )}
@@ -208,11 +210,11 @@ export default function MayorChatPage() {
         ))}
         {isLoading && (
           <div className="flex gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
-              <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20">
+              <Loader2 className="h-4 w-4 text-cyan-500 animate-spin" />
             </div>
             <div className="rounded-lg bg-zinc-800 px-4 py-3">
-              <span className="text-sm text-zinc-400">Mayor is thinking...</span>
+              <span className="text-sm text-zinc-400">Running command...</span>
             </div>
           </div>
         )}
@@ -222,10 +224,10 @@ export default function MayorChatPage() {
       {/* Quick Commands */}
       <div className="border-t border-zinc-800 px-6 py-3">
         <div className="flex flex-wrap gap-2">
-          <QuickCommand cmd="list convoys" onClick={(cmd) => setInput(cmd)} />
-          <QuickCommand cmd="show agents" onClick={(cmd) => setInput(cmd)} />
-          <QuickCommand cmd="list beads" onClick={(cmd) => setInput(cmd)} />
-          <QuickCommand cmd="what needs attention?" onClick={(cmd) => setInput(cmd)} />
+          <QuickCommand cmd="gt rig list" onClick={(cmd) => setInput(cmd)} />
+          <QuickCommand cmd="bd list" onClick={(cmd) => setInput(cmd)} />
+          <QuickCommand cmd="gt convoy list" onClick={(cmd) => setInput(cmd)} />
+          <QuickCommand cmd="what can I do here?" onClick={(cmd) => setInput(cmd)} />
         </div>
       </div>
 
@@ -237,14 +239,14 @@ export default function MayorChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Send a message to the Mayor..."
+            placeholder="Enter a command (gt rig list, bd list, gt convoy list...)"
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
           />
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="flex items-center justify-center rounded-lg bg-amber-500 px-4 py-3 text-zinc-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center rounded-lg bg-cyan-500 px-4 py-3 text-zinc-900 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="h-4 w-4" />
           </button>

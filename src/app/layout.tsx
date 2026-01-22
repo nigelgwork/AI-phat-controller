@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gas Town Control Center",
-  description: "Multi-agent orchestration dashboard for Gas Town",
+  title: "AI Controller",
+  description: "Multi-agent orchestration dashboard powered by Claude Code",
 };
 
 export default function RootLayout({

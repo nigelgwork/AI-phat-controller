@@ -1,148 +1,147 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { join } from "path";
 
-// Get project bin directory
-const getProjectRoot = () => {
-  const candidates = [
-    process.cwd(),
-    join(process.cwd(), ".."),
-    "/home/michael_pappas/Documents/Personal/code/gastown-ui",
-  ];
+const execFileAsync = promisify(execFile);
 
-  for (const candidate of candidates) {
-    try {
-      const binPath = join(candidate, "bin", "gt");
-      require("fs").accessSync(binPath);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  return process.cwd();
-};
+function getEnvPaths() {
+  const home = process.env.HOME || "/root";
+  const gastownPath = process.env.GASTOWN_PATH || `${home}/gt`;
+  const goBinPath = `${home}/go/bin`;
+  return { home, gastownPath, goBinPath };
+}
 
-const projectRoot = getProjectRoot();
-const binDir = join(projectRoot, "bin");
-const gastownPath = process.env.GASTOWN_PATH || join(process.env.HOME || "", "gt");
+// System prompt for Claude Code to understand the Gas Town context
+function getSystemPrompt(gastownPath: string) {
+  return `You are the AI Controller for Gas Town, a multi-agent orchestration system. You have access to the Gas Town workspace at ${gastownPath}. Available CLI tools: gt (Gas Town CLI for managing rigs, convoys, agents) and bd (Beads CLI for managing work items). Common commands: gt rig list, gt convoy list, bd list, bd ready. Help the user manage their multi-agent coding workflow. Be concise and helpful.`;
+}
 
-function runCommand(command: string): string {
+async function runClaudeCode(message: string): Promise<string> {
+  const { gastownPath, goBinPath } = getEnvPaths();
+
+  const env = {
+    ...process.env,
+    PATH: `${goBinPath}:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
+    GASTOWN_PATH: gastownPath,
+  };
+
+  // Use the bridge script for better process handling
+  const scriptPath = "/root/ai-controller/scripts/claude-bridge.sh";
+
   try {
-    return execSync(command, {
-      encoding: "utf-8",
-      timeout: 10000,
-      env: {
-        ...process.env,
-        PATH: `${binDir}:${process.env.PATH}`,
-        GASTOWN_PATH: gastownPath,
-      },
-      cwd: gastownPath,
-    }).trim();
+    const { stdout, stderr } = await execFileAsync(
+      "/bin/bash",
+      [scriptPath, getSystemPrompt(gastownPath), message],
+      {
+        env,
+        cwd: gastownPath,
+        timeout: 120000,
+        maxBuffer: 10 * 1024 * 1024,
+      }
+    );
+
+    return stdout.trim() || stderr.trim() || "Command completed.";
   } catch (error: unknown) {
-    const err = error as { stderr?: string; message?: string };
-    throw new Error(err.stderr || err.message || "Command failed");
+    const err = error as { stdout?: string; stderr?: string; message?: string };
+    // Return any output even if there was an error
+    if (err.stdout?.trim()) {
+      return err.stdout.trim();
+    }
+    throw new Error(err.stderr || err.message || "Claude Code failed");
   }
 }
 
-// Parse natural language commands into gt/bd commands
-function parseCommand(message: string): { command: string; description: string } | null {
-  const msg = message.toLowerCase().trim();
+// Run gt/bd commands directly
+async function runDirectCommand(command: string): Promise<string> {
+  const { gastownPath, goBinPath } = getEnvPaths();
 
-  // Convoy commands
-  if (msg.includes("list convoy") || msg.includes("show convoy") || msg === "convoys") {
-    return { command: "gt convoy list", description: "Listing convoys" };
-  }
-  if (msg.match(/convoy status\s+(\S+)/)) {
-    const match = msg.match(/convoy status\s+(\S+)/);
-    return { command: `gt convoy status ${match![1]}`, description: `Getting status for convoy ${match![1]}` };
-  }
+  const env = {
+    ...process.env,
+    PATH: `${goBinPath}:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
+    GASTOWN_PATH: gastownPath,
+  };
 
-  // Agent commands
-  if (msg.includes("list agent") || msg.includes("show agent") || msg === "agents") {
-    return { command: "gt agents list", description: "Listing agents" };
-  }
+  // Split command into parts
+  const parts = command.trim().split(/\s+/);
+  const cmd = parts[0];
+  const args = parts.slice(1);
 
-  // Bead commands
-  if (msg.includes("list bead") || msg.includes("show bead") || msg === "beads") {
-    return { command: "bd list", description: "Listing beads" };
-  }
-  if (msg.includes("ready") || msg.includes("actionable")) {
-    return { command: "bd ready", description: "Showing actionable beads" };
-  }
+  try {
+    const { stdout, stderr } = await execFileAsync(cmd, args, {
+      env,
+      cwd: gastownPath,
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
 
-  // Rig commands
-  if (msg.includes("list rig") || msg.includes("show rig") || msg === "rigs") {
-    return { command: "gt rig list", description: "Listing rigs" };
+    return stdout.trim() || stderr.trim() || "(No output)";
+  } catch (error: unknown) {
+    const err = error as { stdout?: string; stderr?: string; message?: string };
+    if (err.stdout?.trim()) {
+      return err.stdout.trim();
+    }
+    if (err.stderr?.trim()) {
+      return err.stderr.trim();
+    }
+    throw new Error(err.message || "Command failed");
   }
+}
 
-  // Status commands
-  if (msg.includes("status") || msg.includes("health") || msg.includes("doctor")) {
-    return { command: "gt doctor", description: "Running health check" };
-  }
-
-  // Help
-  if (msg.includes("help") || msg.includes("what can")) {
-    return {
-      command: "echo",
-      description: `I can help you with:
-• list convoys - Show all convoy tracking units
-• list agents - Show running agent sessions
-• list beads - Show work items
-• show actionable - Show beads ready for work
-• list rigs - Show managed repositories
-• status - Run health check
-• convoy status <id> - Get specific convoy details
-
-You can also run any gt or bd command directly.`
-    };
-  }
-
-  // Direct gt/bd commands
+// Check if message is a direct command
+function isDirectCommand(message: string): string | null {
+  const msg = message.trim();
   if (msg.startsWith("gt ") || msg.startsWith("bd ")) {
-    return { command: msg, description: `Running: ${msg}` };
+    return msg;
   }
-
   return null;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { message } = body;
+    const { message, useClaudeCode = true } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    const parsed = parseCommand(message);
-
-    if (!parsed) {
-      return NextResponse.json({
-        response: `I'm not sure how to handle that request. Try:
-• "list convoys" - Show convoy tracking
-• "list agents" - Show agent sessions
-• "list beads" - Show work items
-• "help" - See all available commands
-
-Or run a gt/bd command directly like "gt convoy list" or "bd ready".`,
-      });
+    // Check for direct commands (bypass Claude Code for efficiency)
+    const directCmd = isDirectCommand(message);
+    if (directCmd) {
+      try {
+        const output = await runDirectCommand(directCmd);
+        return NextResponse.json({ response: output });
+      } catch (error) {
+        return NextResponse.json({
+          response: `Error: ${error instanceof Error ? error.message : "Command failed"}`,
+        });
+      }
     }
 
-    // Handle help specially
-    if (parsed.command === "echo") {
-      return NextResponse.json({ response: parsed.description });
+    // Use Claude Code for natural language requests
+    if (useClaudeCode) {
+      try {
+        const response = await runClaudeCode(message);
+        return NextResponse.json({ response });
+      } catch (error) {
+        return NextResponse.json({
+          response: `Claude Code error: ${error instanceof Error ? error.message : "Unknown error"}
+
+You can still run commands directly:
+• gt rig list - List repositories
+• gt convoy list - List convoys
+• bd list - List work items`,
+        });
+      }
     }
 
-    try {
-      const output = runCommand(parsed.command);
-      return NextResponse.json({
-        response: output || `${parsed.description}\n\n(No output)`,
-      });
-    } catch (error) {
-      return NextResponse.json({
-        response: `${parsed.description}\n\nError: ${error instanceof Error ? error.message : "Command failed"}`,
-      });
-    }
+    return NextResponse.json({
+      response: `Try running a command directly:
+• gt rig list - List repositories
+• gt convoy list - List convoys
+• bd list - List work items`,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Request failed" },
