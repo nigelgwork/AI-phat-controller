@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891b2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="220" fill="none" stroke="url(#grad)" stroke-width="8"/>
+
+  <!-- Central brain/controller node -->
+  <circle cx="256" cy="256" r="60" fill="url(#grad)"/>
+  <circle cx="256" cy="256" r="45" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="25" fill="url(#grad)"/>
+
+  <!-- Outer agent nodes -->
+  <circle cx="256" cy="100" r="35" fill="url(#grad)"/>
+  <circle cx="256" cy="412" r="35" fill="url(#grad)"/>
+  <circle cx="100" cy="256" r="35" fill="url(#grad)"/>
+  <circle cx="412" cy="256" r="35" fill="url(#grad)"/>
+
+  <!-- Diagonal nodes -->
+  <circle cx="146" cy="146" r="28" fill="url(#grad)" opacity="0.8"/>
+  <circle cx="366" cy="146" r="28" fill="url(#grad)" opacity="0.8"/>
+  <circle cx="146" cy="366" r="28" fill="url(#grad)" opacity="0.8"/>
+  <circle cx="366" cy="366" r="28" fill="url(#grad)" opacity="0.8"/>
+
+  <!-- Connection lines -->
+  <line x1="256" y1="135" x2="256" y2="196" stroke="url(#grad)" stroke-width="6"/>
+  <line x1="256" y1="316" x2="256" y2="377" stroke="url(#grad)" stroke-width="6"/>
+  <line x1="135" y1="256" x2="196" y2="256" stroke="url(#grad)" stroke-width="6"/>
+  <line x1="316" y1="256" x2="377" y2="256" stroke="url(#grad)" stroke-width="6"/>
+
+  <!-- Diagonal connections -->
+  <line x1="168" y1="168" x2="220" y2="220" stroke="url(#grad)" stroke-width="4" opacity="0.7"/>
+  <line x1="344" y1="168" x2="292" y2="220" stroke="url(#grad)" stroke-width="4" opacity="0.7"/>
+  <line x1="168" y1="344" x2="220" y2="292" stroke="url(#grad)" stroke-width="4" opacity="0.7"/>
+  <line x1="344" y1="344" x2="292" y2="292" stroke="url(#grad)" stroke-width="4" opacity="0.7"/>
+</svg>
