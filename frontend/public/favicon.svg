@@ -1,26 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Solid bright cyan background -->
+  <!-- Bright cyan background -->
   <rect width="512" height="512" rx="80" fill="#06b6d4"/>
 
-  <!-- White brain/network icon -->
+  <!-- Robot head -->
   <g fill="white">
-    <!-- Center node -->
-    <circle cx="256" cy="256" r="50"/>
+    <!-- Antenna -->
+    <circle cx="256" cy="70" r="25"/>
+    <rect x="246" y="90" width="20" height="50"/>
 
-    <!-- Top node -->
-    <circle cx="256" cy="120" r="35"/>
-    <rect x="246" y="155" width="20" height="50"/>
+    <!-- Head -->
+    <rect x="100" y="140" width="312" height="260" rx="40"/>
 
-    <!-- Bottom node -->
-    <circle cx="256" cy="392" r="35"/>
-    <rect x="246" y="307" width="20" height="50"/>
+    <!-- Eyes - dark background -->
+    <rect x="140" y="200" width="90" height="70" rx="15" fill="#0891b2"/>
+    <rect x="282" y="200" width="90" height="70" rx="15" fill="#0891b2"/>
 
-    <!-- Left node -->
-    <circle cx="120" cy="256" r="35"/>
-    <rect x="155" y="246" width="50" height="20"/>
+    <!-- Eye pupils/glows -->
+    <circle cx="185" cy="235" r="22" fill="white"/>
+    <circle cx="327" cy="235" r="22" fill="white"/>
 
-    <!-- Right node -->
-    <circle cx="392" cy="256" r="35"/>
-    <rect x="307" y="246" width="50" height="20"/>
+    <!-- Mouth grill -->
+    <rect x="170" y="320" width="172" height="50" rx="10" fill="#0891b2"/>
+    <rect x="185" y="330" width="30" height="30" rx="5" fill="white"/>
+    <rect x="241" y="330" width="30" height="30" rx="5" fill="white"/>
+    <rect x="297" y="330" width="30" height="30" rx="5" fill="white"/>
+
+    <!-- Ears -->
+    <rect x="60" y="220" width="40" height="80" rx="10"/>
+    <rect x="412" y="220" width="40" height="80" rx="10"/>
   </g>
 </svg>
