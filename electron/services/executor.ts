@@ -307,8 +307,15 @@ export async function detectModes(): Promise<ModeStatus> {
 
   // Check WSL Claude
   try {
-    const { stdout: wslList } = await execAsync('wsl.exe -l -q', { timeout: 5000 });
-    const distros = wslList.trim().split('\n').filter(d => d.trim());
+    // Use wsl.exe -l -q with encoding fix (Windows returns UTF-16 LE)
+    const { stdout: wslList } = await execAsync('wsl.exe -l -q', { timeout: 5000, encoding: 'utf16le' });
+    // Filter out null bytes and empty lines
+    const distros = wslList
+      .replace(/\0/g, '')
+      .trim()
+      .split('\n')
+      .map(d => d.trim())
+      .filter(d => d && d.length > 0);
 
     for (const distro of distros) {
       try {
