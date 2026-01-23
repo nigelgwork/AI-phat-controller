@@ -1,6 +1,6 @@
 import { IpcMain, app, BrowserWindow, dialog } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import { getExecutor, switchExecutor, detectModes } from '../services/executor';
+import { checkForUpdates, downloadUpdate, installUpdate, getUpdateStatus, getCurrentVersion } from '../services/auto-updater';
 import { settings, getSetting, setSetting, getSettings } from '../services/settings';
 import { readBeadsFile, getBeadsStats, getBeadsEvents } from '../services/beads';
 import {
@@ -89,15 +89,23 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   // App handlers
   ipcMain.handle('app:version', () => {
-    return app.getVersion();
+    return getCurrentVersion();
   });
 
   ipcMain.handle('app:checkUpdates', async () => {
-    await autoUpdater.checkForUpdates();
+    return checkForUpdates();
+  });
+
+  ipcMain.handle('app:downloadUpdate', async () => {
+    return downloadUpdate();
   });
 
   ipcMain.handle('app:installUpdate', () => {
-    autoUpdater.quitAndInstall();
+    installUpdate();
+  });
+
+  ipcMain.handle('app:updateStatus', () => {
+    return getUpdateStatus();
   });
 
   ipcMain.handle('app:quit', () => {

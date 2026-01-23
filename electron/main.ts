@@ -1,9 +1,9 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { getExecutor } from './services/executor';
 import { settings, initSettings } from './services/settings';
 import { registerIpcHandlers } from './ipc/handlers';
+import { initAutoUpdater, checkForUpdates } from './services/auto-updater';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -72,14 +72,13 @@ function createWindow() {
 }
 
 function createTray() {
-  // Create tray icon (use a default icon for now)
+  // Create tray icon
   const iconPath = path.join(__dirname, '../resources/icon.ico');
   let trayIcon: Electron.NativeImage;
 
   try {
     trayIcon = nativeImage.createFromPath(iconPath);
   } catch {
-    // Fallback to empty icon if file doesn't exist
     trayIcon = nativeImage.createEmpty();
   }
 
@@ -113,7 +112,7 @@ function createTray() {
     { type: 'separator' },
     {
       label: 'Check for Updates',
-      click: () => autoUpdater.checkForUpdates(),
+      click: () => checkForUpdates(),
     },
     { type: 'separator' },
     {
@@ -144,7 +143,6 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    // Someone tried to run a second instance, focus our window
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -166,9 +164,9 @@ if (!gotTheLock) {
     createWindow();
     createTray();
 
-    // Check for updates in production
-    if (!isDev) {
-      autoUpdater.checkForUpdatesAndNotify();
+    // Initialize auto-updater in production
+    if (!isDev && mainWindow) {
+      initAutoUpdater(mainWindow);
     }
 
     app.on('activate', () => {
@@ -187,13 +185,4 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-});
-
-// Auto-updater events
-autoUpdater.on('update-available', () => {
-  mainWindow?.webContents.send('update-available');
-});
-
-autoUpdater.on('update-downloaded', () => {
-  mainWindow?.webContents.send('update-downloaded');
 });

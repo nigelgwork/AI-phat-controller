@@ -1,51 +1,77 @@
 import { useState, useEffect } from 'react';
 import { Download, X, RefreshCw } from 'lucide-react';
 
+interface UpdateStatus {
+  checking: boolean;
+  available: boolean;
+  downloaded: boolean;
+  downloading: boolean;
+  progress: number;
+  version: string | null;
+}
+
 export default function UpdateBanner() {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [status, setStatus] = useState<UpdateStatus>({
+    checking: false,
+    available: false,
+    downloaded: false,
+    downloading: false,
+    progress: 0,
+    version: null,
+  });
   const [dismissed, setDismissed] = useState(false);
-  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    // Listen for update events
-    const unsubAvailable = window.electronAPI?.onUpdateAvailable(() => {
-      setUpdateAvailable(true);
+    // Get initial status
+    window.electronAPI?.getUpdateStatus?.().then((s) => {
+      if (s) setStatus(s);
     });
 
-    const unsubDownloaded = window.electronAPI?.onUpdateDownloaded(() => {
-      setUpdateDownloaded(true);
-      setUpdateAvailable(false);
-    });
+    // Subscribe to update events
+    const unsubs = [
+      window.electronAPI?.onUpdateChecking?.(() => {
+        setStatus(s => ({ ...s, checking: true }));
+      }),
+      window.electronAPI?.onUpdateAvailable?.((data) => {
+        setStatus(s => ({ ...s, checking: false, available: true, version: data.version }));
+        setDismissed(false);
+      }),
+      window.electronAPI?.onUpdateNotAvailable?.(() => {
+        setStatus(s => ({ ...s, checking: false }));
+      }),
+      window.electronAPI?.onUpdateProgress?.((data) => {
+        setStatus(s => ({ ...s, downloading: true, progress: data.percent }));
+      }),
+      window.electronAPI?.onUpdateDownloaded?.((data) => {
+        setStatus(s => ({ ...s, downloading: false, downloaded: true, version: data.version, progress: 100 }));
+        setDismissed(false);
+      }),
+    ];
 
     return () => {
-      unsubAvailable?.();
-      unsubDownloaded?.();
+      unsubs.forEach(unsub => unsub?.());
     };
   }, []);
 
   const handleCheckForUpdates = async () => {
-    setChecking(true);
-    try {
-      await window.electronAPI?.checkForUpdates();
-    } finally {
-      setTimeout(() => setChecking(false), 2000);
-    }
+    setStatus(s => ({ ...s, checking: true }));
+    await window.electronAPI?.checkForUpdates();
   };
 
   const handleInstallUpdate = () => {
     window.electronAPI?.installUpdate();
   };
 
-  if (dismissed || (!updateAvailable && !updateDownloaded)) {
+  // Show just a check button if no update activity
+  if (dismissed || (!status.available && !status.downloaded && !status.downloading)) {
     return (
       <button
         onClick={handleCheckForUpdates}
-        disabled={checking}
+        disabled={status.checking}
         className="text-slate-400 hover:text-white disabled:opacity-50 p-2"
         title="Check for updates"
       >
-        <RefreshCw size={16} className={checking ? 'animate-spin' : ''} />
+        <RefreshCw size={16} className={status.checking ? 'animate-spin' : ''} />
       </button>
     );
   }
@@ -53,19 +79,36 @@ export default function UpdateBanner() {
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 bg-cyan-500/20 border border-cyan-500/30 rounded-lg">
       <Download size={16} className="text-cyan-400" />
-      {updateDownloaded ? (
+
+      {status.downloaded ? (
         <>
-          <span className="text-sm text-cyan-300">Update ready to install</span>
+          <span className="text-sm text-cyan-300">
+            v{status.version} ready
+          </span>
           <button
             onClick={handleInstallUpdate}
-            className="text-xs bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1 rounded font-medium transition-colors"
+            className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded font-medium transition-colors"
           >
             Restart & Update
           </button>
         </>
+      ) : status.downloading ? (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-cyan-300">Downloading...</span>
+          <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-cyan-500 transition-all duration-300"
+              style={{ width: `${status.progress}%` }}
+            />
+          </div>
+          <span className="text-xs text-cyan-400">{status.progress}%</span>
+        </div>
       ) : (
-        <span className="text-sm text-cyan-300">Downloading update...</span>
+        <span className="text-sm text-cyan-300">
+          v{status.version} downloading...
+        </span>
       )}
+
       <button
         onClick={() => setDismissed(true)}
         className="text-slate-400 hover:text-white ml-1"

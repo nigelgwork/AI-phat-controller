@@ -46,6 +46,17 @@ export interface SystemStatus {
   discovered: Project[];
 }
 
+export interface UpdateStatusType {
+  checking: boolean;
+  available: boolean;
+  downloaded: boolean;
+  downloading: boolean;
+  progress: number;
+  version: string | null;
+  releaseNotes: string | null;
+  error: string | null;
+}
+
 export interface AppSettings {
   executionMode: 'windows' | 'wsl';
   defaultMode: 'windows' | 'wsl' | 'auto';
@@ -110,14 +121,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // System status
   getSystemStatus: (): Promise<SystemStatus> => ipcRenderer.invoke('system:status'),
 
+  // Update status
+  getUpdateStatus: (): Promise<UpdateStatusType> => ipcRenderer.invoke('app:updateStatus'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('app:downloadUpdate'),
+
   // Event listeners
-  onUpdateAvailable: (callback: () => void) => {
-    ipcRenderer.on('update-available', callback);
-    return () => ipcRenderer.removeListener('update-available', callback);
+  onUpdateChecking: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('update:checking', handler);
+    return () => ipcRenderer.removeListener('update:checking', handler);
   },
-  onUpdateDownloaded: (callback: () => void) => {
-    ipcRenderer.on('update-downloaded', callback);
-    return () => ipcRenderer.removeListener('update-downloaded', callback);
+  onUpdateAvailable: (callback: (data: { version: string; releaseNotes?: string }) => void) => {
+    const handler = (_: unknown, data: { version: string; releaseNotes?: string }) => callback(data);
+    ipcRenderer.on('update:available', handler);
+    return () => ipcRenderer.removeListener('update:available', handler);
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('update:not-available', handler);
+    return () => ipcRenderer.removeListener('update:not-available', handler);
+  },
+  onUpdateProgress: (callback: (data: { percent: number; bytesPerSecond?: number; transferred?: number; total?: number }) => void) => {
+    const handler = (_: unknown, data: { percent: number }) => callback(data);
+    ipcRenderer.on('update:progress', handler);
+    return () => ipcRenderer.removeListener('update:progress', handler);
+  },
+  onUpdateDownloaded: (callback: (data: { version: string }) => void) => {
+    const handler = (_: unknown, data: { version: string }) => callback(data);
+    ipcRenderer.on('update:downloaded', handler);
+    return () => ipcRenderer.removeListener('update:downloaded', handler);
+  },
+  onUpdateError: (callback: (data: { error: string }) => void) => {
+    const handler = (_: unknown, data: { error: string }) => callback(data);
+    ipcRenderer.on('update:error', handler);
+    return () => ipcRenderer.removeListener('update:error', handler);
   },
   onModeChanged: (callback: (mode: 'windows' | 'wsl') => void) => {
     const handler = (_: unknown, mode: 'windows' | 'wsl') => callback(mode);
@@ -148,8 +185,14 @@ declare global {
       installUpdate: () => Promise<void>;
       quit: () => Promise<void>;
       minimize: () => Promise<void>;
-      onUpdateAvailable: (callback: () => void) => () => void;
-      onUpdateDownloaded: (callback: () => void) => () => void;
+      getUpdateStatus: () => Promise<UpdateStatusType>;
+      downloadUpdate: () => Promise<void>;
+      onUpdateChecking: (callback: () => void) => () => void;
+      onUpdateAvailable: (callback: (data: { version: string; releaseNotes?: string }) => void) => () => void;
+      onUpdateNotAvailable: (callback: () => void) => () => void;
+      onUpdateProgress: (callback: (data: { percent: number }) => void) => () => void;
+      onUpdateDownloaded: (callback: (data: { version: string }) => void) => () => void;
+      onUpdateError: (callback: (data: { error: string }) => void) => () => void;
       onModeChanged: (callback: (mode: 'windows' | 'wsl') => void) => () => void;
       // Projects
       listProjects: () => Promise<Project[]>;

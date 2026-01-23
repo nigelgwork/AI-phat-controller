@@ -194,47 +194,86 @@ export default function Settings() {
   );
 }
 
+interface UpdateStatus {
+  checking: boolean;
+  available: boolean;
+  downloaded: boolean;
+  downloading: boolean;
+  progress: number;
+  version: string | null;
+  error: string | null;
+}
+
 function AboutCard() {
   const [version, setVersion] = useState<string>('');
-  const [checking, setChecking] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState<string>('');
+  const [status, setStatus] = useState<UpdateStatus>({
+    checking: false,
+    available: false,
+    downloaded: false,
+    downloading: false,
+    progress: 0,
+    version: null,
+    error: null,
+  });
 
   useEffect(() => {
     window.electronAPI?.getVersion().then(setVersion);
 
-    const unsubAvailable = window.electronAPI?.onUpdateAvailable(() => {
-      setUpdateStatus('Update available, downloading...');
+    // Get initial status
+    window.electronAPI?.getUpdateStatus?.().then((s) => {
+      if (s) setStatus(s);
     });
 
-    const unsubDownloaded = window.electronAPI?.onUpdateDownloaded(() => {
-      setUpdateStatus('Update ready to install');
-    });
+    // Subscribe to update events
+    const unsubs = [
+      window.electronAPI?.onUpdateChecking?.(() => {
+        setStatus(s => ({ ...s, checking: true, error: null }));
+      }),
+      window.electronAPI?.onUpdateAvailable?.((data) => {
+        setStatus(s => ({ ...s, checking: false, available: true, version: data.version }));
+      }),
+      window.electronAPI?.onUpdateNotAvailable?.(() => {
+        setStatus(s => ({ ...s, checking: false, available: false }));
+      }),
+      window.electronAPI?.onUpdateProgress?.((data) => {
+        setStatus(s => ({ ...s, downloading: true, progress: data.percent }));
+      }),
+      window.electronAPI?.onUpdateDownloaded?.((data) => {
+        setStatus(s => ({ ...s, downloading: false, downloaded: true, version: data.version, progress: 100 }));
+      }),
+      window.electronAPI?.onUpdateError?.((data) => {
+        setStatus(s => ({ ...s, checking: false, downloading: false, error: data.error }));
+      }),
+    ];
 
     return () => {
-      unsubAvailable?.();
-      unsubDownloaded?.();
+      unsubs.forEach(unsub => unsub?.());
     };
   }, []);
 
   const handleCheckForUpdates = async () => {
-    setChecking(true);
-    setUpdateStatus('Checking...');
-    try {
-      await window.electronAPI?.checkForUpdates();
-      setTimeout(() => {
-        if (updateStatus === 'Checking...') {
-          setUpdateStatus('You are on the latest version');
-        }
-        setChecking(false);
-      }, 3000);
-    } catch {
-      setUpdateStatus('Failed to check for updates');
-      setChecking(false);
-    }
+    setStatus(s => ({ ...s, checking: true, error: null }));
+    await window.electronAPI?.checkForUpdates();
   };
 
   const handleInstallUpdate = () => {
     window.electronAPI?.installUpdate();
+  };
+
+  const getStatusText = () => {
+    if (status.error) return `Error: ${status.error}`;
+    if (status.downloaded) return `v${status.version} ready to install`;
+    if (status.downloading) return `Downloading... ${status.progress}%`;
+    if (status.available) return `v${status.version} available`;
+    if (status.checking) return 'Checking...';
+    return 'Up to date';
+  };
+
+  const getStatusColor = () => {
+    if (status.error) return 'text-red-400';
+    if (status.downloaded) return 'text-green-400';
+    if (status.downloading || status.available) return 'text-cyan-400';
+    return 'text-slate-300';
   };
 
   return (
@@ -256,29 +295,35 @@ function AboutCard() {
         {/* Update Status */}
         <div className="p-4 bg-slate-900 rounded-lg">
           <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Status</p>
-          <p className="text-sm text-slate-300">
-            {updateStatus || 'Up to date'}
-          </p>
+          <p className={`text-sm ${getStatusColor()}`}>{getStatusText()}</p>
+          {status.downloading && (
+            <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-500 transition-all duration-300"
+                style={{ width: `${status.progress}%` }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Actions */}
         <div className="p-4 bg-slate-900 rounded-lg flex items-center justify-center gap-2">
-          {updateStatus === 'Update ready to install' ? (
+          {status.downloaded ? (
             <button
               onClick={handleInstallUpdate}
-              className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             >
               <Download size={16} />
-              Install Update
+              Install & Restart
             </button>
           ) : (
             <button
               onClick={handleCheckForUpdates}
-              disabled={checking}
+              disabled={status.checking || status.downloading}
               className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-colors"
             >
-              <RefreshCw size={16} className={checking ? 'animate-spin' : ''} />
-              Check Updates
+              <RefreshCw size={16} className={status.checking ? 'animate-spin' : ''} />
+              {status.checking ? 'Checking...' : 'Check Updates'}
             </button>
           )}
         </div>
