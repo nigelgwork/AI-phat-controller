@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Circle } from 'lucide-react';
+import { Circle, GitBranch, Terminal, FolderGit, Plus, ArrowRight } from 'lucide-react';
 
 interface Bead {
   id: string;
@@ -23,13 +23,7 @@ export default function Beads() {
       {isLoading ? (
         <div className="text-slate-400">Loading beads...</div>
       ) : !beads?.length ? (
-        <div className="bg-slate-800 rounded-lg p-8 border border-slate-700 text-center">
-          <Circle className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-          <p className="text-slate-400">No beads found</p>
-          <p className="text-sm text-slate-500 mt-2">
-            Create beads with: bd add "title"
-          </p>
-        </div>
+        <EmptyState />
       ) : (
         <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
           <table className="w-full">
@@ -66,6 +60,122 @@ export default function Beads() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="space-y-6">
+      {/* What are Beads */}
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+        <div className="flex items-start gap-4">
+          <div className="p-3 bg-cyan-500/20 rounded-lg">
+            <Circle className="w-6 h-6 text-cyan-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">What are Beads?</h3>
+            <p className="text-slate-400 mb-4">
+              Beads are <strong className="text-white">atomic work items</strong> - like issues or tasks,
+              but designed for AI agents. Each bead represents a single unit of work that Claude Code
+              can pick up and complete autonomously.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300">Bug fixes</span>
+              <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300">Features</span>
+              <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300">Refactoring</span>
+              <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300">Tests</span>
+              <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300">Docs</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* How it integrates */}
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <GitBranch className="w-5 h-5 text-cyan-400" />
+          How Beads Work with Your Git Repos
+        </h3>
+        <div className="space-y-4 text-slate-400">
+          <p>
+            Beads are stored in a <code className="text-cyan-400 bg-slate-900 px-1 rounded">.beads/</code> folder
+            inside your git repository. They're version-controlled just like your code.
+          </p>
+          <div className="bg-slate-900 rounded-lg p-4 font-mono text-sm">
+            <div className="text-slate-500">your-project/</div>
+            <div className="text-slate-500">├── src/</div>
+            <div className="text-slate-500">├── package.json</div>
+            <div className="text-cyan-400">└── .beads/</div>
+            <div className="text-cyan-400 pl-4">└── beads.jsonl  ← Work items stored here</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Getting Started */}
+      <div className="bg-gradient-to-br from-cyan-500/10 to-slate-800 rounded-lg p-6 border border-cyan-500/30">
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Plus className="w-5 h-5 text-cyan-400" />
+          Get Started with Your Project
+        </h3>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-sm font-bold">1</div>
+            <div>
+              <p className="text-white font-medium">Initialize beads in your existing repo</p>
+              <code className="text-sm text-cyan-400 bg-slate-900 px-2 py-1 rounded block mt-1">
+                cd /path/to/your/project && bd init
+              </code>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-sm font-bold">2</div>
+            <div>
+              <p className="text-white font-medium">Add work items</p>
+              <code className="text-sm text-cyan-400 bg-slate-900 px-2 py-1 rounded block mt-1">
+                bd add "Fix the login validation bug"
+              </code>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-sm font-bold">3</div>
+            <div>
+              <p className="text-white font-medium">Point AI Controller to your project</p>
+              <p className="text-sm text-slate-400 mt-1">
+                Go to <strong className="text-white">Settings</strong> and set the Gas Town path to your project folder
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Claude Code Integration */}
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Terminal className="w-5 h-5 text-cyan-400" />
+          Using with Claude Code
+        </h3>
+        <div className="space-y-3 text-slate-400">
+          <p>Once you have beads, you can:</p>
+          <ul className="space-y-2 ml-4">
+            <li className="flex items-center gap-2">
+              <ArrowRight size={14} className="text-cyan-400" />
+              <span>Use the <strong className="text-white">Controller</strong> tab to ask Claude to work on beads</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <ArrowRight size={14} className="text-cyan-400" />
+              <span>Run <code className="text-cyan-400 bg-slate-900 px-1 rounded">bd ready</code> to see available work</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <ArrowRight size={14} className="text-cyan-400" />
+              <span>Claude Code can pick beads and create PRs automatically</span>
+            </li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
