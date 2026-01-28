@@ -22,16 +22,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24'
 
       - name: Build Go tools (gt and bd)
         shell: bash
@@ -44,23 +47,23 @@ jobs:
           go build -o ../../resources/bin/gt.exe ./cmd/gt
           cd ../..
 
-          # Clone and build bd
+          # Clone and build bd (needs CGO for gozstd dependency)
           git clone --depth 1 https://github.com/steveyegge/beads.git .go-build-temp/beads
           cd .go-build-temp/beads
-          go build -o ../../resources/bin/bd.exe ./cmd/bd
+          CGO_ENABLED=1 go build -o ../../resources/bin/bd.exe ./cmd/bd
           cd ../..
 
           # Verify builds
           ls -la resources/bin/
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend
-        run: npm run build:frontend
+        run: pnpm run build:frontend
 
       - name: Build Electron
-        run: npm run build:electron
+        run: pnpm run build:electron
 
       - name: Build Windows installer and publish
         env:
