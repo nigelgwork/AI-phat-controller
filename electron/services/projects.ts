@@ -441,8 +441,57 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
     const activeSessions = allHistorySessions.filter(s => s.status === 'running');
     const recentSessions = allHistorySessions.filter(s => s.status === 'recent').slice(0, 10);
 
-    // WSL: Can get working directory from /proc/{pid}/cwd
+    // WINDOWS: Detect Claude processes using PowerShell
     if (process.platform === 'win32') {
+      try {
+        // Use PowerShell to find node/claude processes
+        const psCommand = `
+          Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -match 'node|claude' -and $_.CommandLine -match 'claude|@anthropic-ai'
+          } | Select-Object ProcessId, Name, CommandLine, CreationDate | ConvertTo-Json -Compress
+        `.replace(/\n\s*/g, ' ').trim();
+
+        const { stdout: psOutput } = await execAsync(
+          `powershell.exe -NoProfile -Command "${psCommand}"`,
+          { timeout: 10000 }
+        );
+
+        if (psOutput.trim()) {
+          try {
+            let processes = JSON.parse(psOutput.trim());
+            // Handle single object vs array
+            if (!Array.isArray(processes)) {
+              processes = [processes];
+            }
+
+            for (const proc of processes) {
+              if (!proc || !proc.ProcessId) continue;
+
+              const pid = proc.ProcessId;
+              const command = proc.CommandLine || proc.Name || 'Claude Code';
+
+              // Skip if this looks like a helper/child process
+              if (command.includes('--type=') || command.includes('crashpad')) continue;
+
+              sessions.push({
+                pid,
+                workingDir: '',
+                projectName: 'Claude Code',
+                command: 'Claude Code (Windows)',
+                startTime: proc.CreationDate ? new Date(proc.CreationDate).toISOString() : undefined,
+                source: 'windows',
+                status: 'running',
+              });
+            }
+          } catch (parseErr) {
+            console.error('Error parsing PowerShell output:', parseErr);
+          }
+        }
+      } catch (psErr) {
+        console.error('PowerShell process detection failed:', psErr);
+      }
+
+      // WSL: Can get working directory from /proc/{pid}/cwd
       try {
         const { stdout: wslOutput } = await execAsync(
           'wsl.exe -e bash -c "pgrep -af claude 2>/dev/null || true"',
@@ -536,27 +585,45 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
       }
     }
 
-    // Add active sessions from history (for Windows where we can't get working dir from process)
+    // Merge Windows sessions with active history sessions
+    // Windows process detection gives us PID, history gives us project/workingDir
+    const windowsSessions = sessions.filter(s => s.source === 'windows' && !s.workingDir);
+    const wslSessions = sessions.filter(s => s.source === 'wsl');
+
+    // For each active history session, try to match with a Windows process
+    const usedWindowsSessions = new Set<number>();
+
     for (const activeSession of activeSessions) {
-      // Check if we already have this session from process detection (by matching working dir)
-      const existingIdx = sessions.findIndex(s =>
+      // First check if this matches a WSL session (by working dir)
+      const wslMatch = wslSessions.find(s =>
         s.workingDir && activeSession.workingDir &&
         (s.workingDir.includes(activeSession.projectName || '') ||
          activeSession.workingDir.includes(s.projectName || ''))
       );
 
-      if (existingIdx >= 0) {
-        // Merge info: keep the PID from process detection, but use history for details
-        sessions[existingIdx].sessionId = activeSession.sessionId;
-        if (!sessions[existingIdx].workingDir) {
-          sessions[existingIdx].workingDir = activeSession.workingDir;
+      if (wslMatch) {
+        // Merge info into WSL session
+        wslMatch.sessionId = activeSession.sessionId;
+        wslMatch.command = `Working in ${wslMatch.projectName || activeSession.projectName}`;
+        continue;
+      }
+
+      // Try to find an unmatched Windows session to pair with
+      const availableWindowsSession = windowsSessions.find((_, idx) => !usedWindowsSessions.has(idx));
+      const windowsIdx = availableWindowsSession ? windowsSessions.indexOf(availableWindowsSession) : -1;
+
+      if (windowsIdx >= 0 && availableWindowsSession) {
+        usedWindowsSessions.add(windowsIdx);
+        // Update the Windows session with history info
+        const sessionIdx = sessions.indexOf(availableWindowsSession);
+        if (sessionIdx >= 0) {
+          sessions[sessionIdx].workingDir = activeSession.workingDir;
+          sessions[sessionIdx].projectName = activeSession.projectName;
+          sessions[sessionIdx].sessionId = activeSession.sessionId;
+          sessions[sessionIdx].command = `Working in ${activeSession.projectName}`;
         }
-        if (!sessions[existingIdx].projectName) {
-          sessions[existingIdx].projectName = activeSession.projectName;
-        }
-        sessions[existingIdx].command = `Working in ${sessions[existingIdx].projectName}`;
       } else {
-        // This is an active session we didn't detect via process - add it
+        // No Windows process to pair with - add as history-only active session
         sessions.push({
           pid: 0,
           workingDir: activeSession.workingDir,
@@ -569,6 +636,10 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
         });
       }
     }
+
+    // Remove any unmatched Windows sessions that have no useful info
+    // (They show up as "Claude Code (Windows)" with no project context)
+    // Actually, keep them so user can see Claude is running even if we can't match to a project
 
     // Add recent (non-active) sessions
     for (const recentSession of recentSessions) {

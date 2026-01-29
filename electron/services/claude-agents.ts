@@ -376,6 +376,120 @@ export async function deleteAgent(id: string): Promise<void> {
   await fsPromises.unlink(agent.filePath);
 }
 
+// Get the Windows commands directory path
+function getWindowsCommandsDir(): string {
+  const homeDir = app.getPath('home');
+  return path.join(homeDir, '.claude', 'commands');
+}
+
+// Get the WSL commands directory path (as Windows UNC path)
+async function getWslCommandsDir(): Promise<string | null> {
+  const wslHome = await getWslHomePath();
+  if (!wslHome) return null;
+  return path.join(wslHome, '.claude', 'commands');
+}
+
+// Copy an agent to Windows
+export async function copyAgentToWindows(id: string): Promise<ClaudeAgent> {
+  const agent = await getAgent(id);
+  if (!agent) {
+    throw new Error(`Agent not found: ${id}`);
+  }
+
+  // Check if already on Windows
+  if (!agent.pluginName.includes('WSL')) {
+    throw new Error('Agent is already on Windows');
+  }
+
+  const windowsCommandsDir = getWindowsCommandsDir();
+
+  // Ensure the directory exists
+  try {
+    await fsPromises.mkdir(windowsCommandsDir, { recursive: true });
+  } catch {
+    // Directory might already exist
+  }
+
+  // Create the new file path
+  const fileName = path.basename(agent.filePath);
+  const newFilePath = path.join(windowsCommandsDir, fileName);
+
+  // Check if file already exists
+  try {
+    await fsPromises.access(newFilePath);
+    throw new Error(`Agent "${agent.name}" already exists on Windows`);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
+    }
+    // File doesn't exist, good to proceed
+  }
+
+  // Read the original file content and write to new location
+  const content = await fsPromises.readFile(agent.filePath, 'utf-8');
+  await fsPromises.writeFile(newFilePath, content, 'utf-8');
+
+  // Return the new agent
+  const newAgent = await parseAgentFile(newFilePath, 'commands', true);
+  if (!newAgent) {
+    throw new Error('Failed to parse copied agent');
+  }
+
+  return newAgent;
+}
+
+// Copy an agent to WSL
+export async function copyAgentToWsl(id: string): Promise<ClaudeAgent> {
+  const agent = await getAgent(id);
+  if (!agent) {
+    throw new Error(`Agent not found: ${id}`);
+  }
+
+  // Check if already on WSL
+  if (agent.pluginName.includes('WSL')) {
+    throw new Error('Agent is already on WSL');
+  }
+
+  const wslCommandsDir = await getWslCommandsDir();
+  if (!wslCommandsDir) {
+    throw new Error('WSL is not available');
+  }
+
+  // Ensure the directory exists (via WSL command)
+  try {
+    await execAsync('wsl.exe -e mkdir -p ~/.claude/commands', { timeout: 5000 });
+  } catch {
+    // Directory might already exist
+  }
+
+  // Create the new file path
+  const fileName = path.basename(agent.filePath);
+  const newFilePath = path.join(wslCommandsDir, fileName);
+
+  // Check if file already exists
+  try {
+    await fsPromises.access(newFilePath);
+    throw new Error(`Agent "${agent.name}" already exists on WSL`);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
+    }
+    // File doesn't exist, good to proceed
+  }
+
+  // Read the original file content and write to new location
+  const content = await fsPromises.readFile(agent.filePath, 'utf-8');
+  await fsPromises.writeFile(newFilePath, content, 'utf-8');
+
+  // Return the new agent
+  const newAgent = await parseAgentFile(newFilePath, 'commands (WSL)', true);
+  if (!newAgent) {
+    throw new Error('Failed to parse copied agent');
+  }
+
+  return newAgent;
+}
+
 // Get list of plugins that have agents
 export async function getAgentPlugins(): Promise<AgentPlugin[]> {
   const sources = await getAgentSourceDirsAsync();

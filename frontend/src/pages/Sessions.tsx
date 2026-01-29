@@ -3,6 +3,7 @@ import {
   Terminal, RefreshCw, Activity, FolderGit, Clock, Cpu, FileCode, Bot
 } from 'lucide-react';
 import type { ClaudeSession, Project } from '../types/electron';
+import CollapsibleHelp from '../components/CollapsibleHelp';
 
 function formatStartTime(isoString: string): string {
   try {
@@ -154,8 +155,7 @@ export default function Sessions() {
       )}
 
       {/* Help */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="font-semibold text-white mb-3">About Claude Code Sessions</h3>
+      <CollapsibleHelp title="About Claude Code Sessions">
         <div className="grid md:grid-cols-2 gap-4 text-sm text-slate-400">
           <div>
             <p className="text-white font-medium mb-1">Running Instances</p>
@@ -174,7 +174,7 @@ export default function Sessions() {
             <p>Projects with a CLAUDE.md file have custom instructions for Claude Code.</p>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
     </div>
   );
 }

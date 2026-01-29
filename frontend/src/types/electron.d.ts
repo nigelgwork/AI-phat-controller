@@ -157,6 +157,8 @@ interface ElectronAPI {
   updateAgent: (id: string, updates: Partial<ClaudeAgent>) => Promise<ClaudeAgent>;
   deleteAgent: (id: string) => Promise<void>;
   getAgentPlugins: () => Promise<AgentPlugin[]>;
+  copyAgentToWindows: (id: string) => Promise<ClaudeAgent>;
+  copyAgentToWsl: (id: string) => Promise<ClaudeAgent>;
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;

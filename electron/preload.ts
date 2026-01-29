@@ -172,6 +172,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateAgent: (id: string, updates: Partial<ClaudeAgent>): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:update', id, updates),
   deleteAgent: (id: string): Promise<void> => ipcRenderer.invoke('agents:delete', id),
   getAgentPlugins: (): Promise<AgentPlugin[]> => ipcRenderer.invoke('agents:plugins'),
+  copyAgentToWindows: (id: string): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:copyToWindows', id),
+  copyAgentToWsl: (id: string): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:copyToWsl', id),
 
   // Event listeners
   onUpdateChecking: (callback: () => void) => {
@@ -261,6 +263,8 @@ declare global {
       updateAgent: (id: string, updates: Partial<ClaudeAgent>) => Promise<ClaudeAgent>;
       deleteAgent: (id: string) => Promise<void>;
       getAgentPlugins: () => Promise<AgentPlugin[]>;
+      copyAgentToWindows: (id: string) => Promise<ClaudeAgent>;
+      copyAgentToWsl: (id: string) => Promise<ClaudeAgent>;
     };
   }
 }

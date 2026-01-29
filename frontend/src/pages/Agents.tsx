@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bot, RefreshCw, Plus, Trash2, Edit2, Save, X, ChevronRight, Package,
-  FileText, Wand2, Code, Search, Hammer
+  FileText, Wand2, Code, Search, Hammer, Monitor, Terminal
 } from 'lucide-react';
 import type { ClaudeAgent } from '../types/electron';
+import CollapsibleHelp from '../components/CollapsibleHelp';
 
 const AGENT_COLORS = ['blue', 'green', 'yellow', 'magenta', 'red', 'cyan'] as const;
 const AGENT_MODELS = ['inherit', 'sonnet', 'opus', 'haiku'] as const;
@@ -49,6 +50,22 @@ export default function Agents() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claude-agents'] });
       setSelectedAgent(null);
+    },
+  });
+
+  const copyToWindowsMutation = useMutation({
+    mutationFn: (id: string) => window.electronAPI!.copyAgentToWindows(id),
+    onSuccess: (newAgent) => {
+      queryClient.invalidateQueries({ queryKey: ['claude-agents'] });
+      setSelectedAgent(newAgent);
+    },
+  });
+
+  const copyToWslMutation = useMutation({
+    mutationFn: (id: string) => window.electronAPI!.copyAgentToWsl(id),
+    onSuccess: (newAgent) => {
+      queryClient.invalidateQueries({ queryKey: ['claude-agents'] });
+      setSelectedAgent(newAgent);
     },
   });
 
@@ -210,8 +227,11 @@ export default function Agents() {
                   deleteMutation.mutate(selectedAgent.id);
                 }
               }}
+              onCopyToWindows={() => copyToWindowsMutation.mutate(selectedAgent.id)}
+              onCopyToWsl={() => copyToWslMutation.mutate(selectedAgent.id)}
               isSaving={createMutation.isPending || updateMutation.isPending}
               isDeleting={deleteMutation.isPending}
+              isCopying={copyToWindowsMutation.isPending || copyToWslMutation.isPending}
             />
           ) : (
             <AgentPlaceholder />
@@ -266,15 +286,11 @@ function AgentPlaceholder() {
         </p>
       </div>
 
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-        <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-          <Bot size={18} className="text-cyan-400" />
-          About Claude Code Agents
-        </h3>
+      <CollapsibleHelp title="About Claude Code Agents">
         <p className="text-slate-400 text-sm mb-4">
           Agents are specialized Claude Code configurations with custom system prompts,
           tool restrictions, and model preferences. They're defined as .md files in
-          ~/.claude/plugins/.
+          ~/.claude/commands/.
         </p>
 
         <h4 className="font-medium text-white mb-3">Built-in Agent Types</h4>
@@ -289,7 +305,7 @@ function AgentPlaceholder() {
             </div>
           ))}
         </div>
-      </div>
+      </CollapsibleHelp>
     </div>
   );
 }
@@ -302,11 +318,14 @@ interface AgentEditorProps {
   onCancel: () => void;
   onSave: (updates: Partial<ClaudeAgent>) => void;
   onDelete: () => void;
+  onCopyToWindows: () => void;
+  onCopyToWsl: () => void;
   isSaving: boolean;
   isDeleting: boolean;
+  isCopying: boolean;
 }
 
-function AgentEditor({ agent, isEditing, isCreating, onEdit, onCancel, onSave, onDelete, isSaving, isDeleting }: AgentEditorProps) {
+function AgentEditor({ agent, isEditing, isCreating, onEdit, onCancel, onSave, onDelete, onCopyToWindows, onCopyToWsl, isSaving, isDeleting, isCopying }: AgentEditorProps) {
   const [formData, setFormData] = useState<Partial<ClaudeAgent>>({
     name: agent.name,
     description: agent.description,
@@ -351,6 +370,15 @@ function AgentEditor({ agent, isEditing, isCreating, onEdit, onCancel, onSave, o
               Custom
             </span>
           )}
+          {!isCreating && (
+            <span className={`text-xs px-2 py-0.5 rounded ${
+              agent.pluginName.includes('WSL')
+                ? 'bg-orange-500/20 text-orange-400'
+                : 'bg-blue-500/20 text-blue-400'
+            }`}>
+              {agent.pluginName.includes('WSL') ? 'WSL' : 'Windows'}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!isEditing ? (
@@ -362,6 +390,29 @@ function AgentEditor({ agent, isEditing, isCreating, onEdit, onCancel, onSave, o
                 <Edit2 size={14} />
                 Edit
               </button>
+              {/* Copy between Windows/WSL buttons */}
+              {!isCreating && agent.pluginName.includes('WSL') && (
+                <button
+                  onClick={onCopyToWindows}
+                  disabled={isCopying}
+                  className="flex items-center gap-1 px-3 py-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded text-sm transition-colors"
+                  title="Copy this agent to Windows"
+                >
+                  <Monitor size={14} />
+                  {isCopying ? 'Copying...' : 'Copy to Windows'}
+                </button>
+              )}
+              {!isCreating && !agent.pluginName.includes('WSL') && (
+                <button
+                  onClick={onCopyToWsl}
+                  disabled={isCopying}
+                  className="flex items-center gap-1 px-3 py-1.5 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 rounded text-sm transition-colors"
+                  title="Copy this agent to WSL"
+                >
+                  <Terminal size={14} />
+                  {isCopying ? 'Copying...' : 'Copy to WSL'}
+                </button>
+              )}
               {agent.isCustom && (
                 <button
                   onClick={onDelete}

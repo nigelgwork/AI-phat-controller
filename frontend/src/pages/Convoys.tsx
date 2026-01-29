@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Boxes, Package, ArrowRight, GitPullRequest, CheckCircle, Clock } from 'lucide-react';
+import CollapsibleHelp from '../components/CollapsibleHelp';
 
 export default function Convoys() {
   const { data: result, isLoading } = useQuery({
@@ -40,14 +41,22 @@ export default function Convoys() {
 function EmptyState() {
   return (
     <div className="space-y-6">
-      {/* What are Convoys */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+      {/* No convoys message */}
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 text-center">
+        <Boxes className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+        <p className="text-slate-400">No convoys found</p>
+        <p className="text-sm text-slate-500 mt-2">
+          Create your first convoy with <code className="text-cyan-400">gt convoy create "name"</code>
+        </p>
+      </div>
+
+      {/* Collapsible help sections */}
+      <CollapsibleHelp title="What are Convoys?">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-cyan-500/20 rounded-lg">
             <Boxes className="w-6 h-6 text-cyan-400" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white mb-2">What are Convoys?</h3>
             <p className="text-slate-400 mb-4">
               Convoys are <strong className="text-white">groups of related beads</strong> that travel together.
               Think of them like a sprint, epic, or feature branch — a bundle of work items that belong together.
@@ -60,14 +69,13 @@ function EmptyState() {
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
 
-      {/* Example Convoy */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Package className="w-5 h-5 text-cyan-400" />
-          Example: "Dark Mode Feature" Convoy
-        </h3>
+      <CollapsibleHelp title="Example Convoy">
+        <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+          <Package className="w-4 h-4 text-cyan-400" />
+          "Dark Mode Feature" Convoy
+        </h4>
         <div className="bg-slate-900 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-3 text-sm">
             <CheckCircle size={16} className="text-green-400" />
@@ -93,11 +101,9 @@ function EmptyState() {
         <p className="text-sm text-slate-400 mt-4">
           All beads in a convoy are tracked together. When the convoy completes, you can ship the whole feature.
         </p>
-      </div>
+      </CollapsibleHelp>
 
-      {/* Why use Convoys */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="text-lg font-semibold text-white mb-4">Why Use Convoys?</h3>
+      <CollapsibleHelp title="Why Use Convoys?">
         <div className="grid md:grid-cols-2 gap-4">
           <div className="flex items-start gap-3">
             <ArrowRight size={16} className="text-cyan-400 mt-1" />
@@ -128,11 +134,9 @@ function EmptyState() {
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
 
-      {/* Getting Started */}
-      <div className="bg-gradient-to-br from-cyan-500/10 to-slate-800 rounded-lg p-6 border border-cyan-500/30">
-        <h3 className="text-lg font-semibold text-white mb-4">Create Your First Convoy</h3>
+      <CollapsibleHelp title="Getting Started">
         <div className="space-y-4">
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-sm font-bold">1</div>
@@ -164,29 +168,18 @@ function EmptyState() {
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
 
-      {/* Integration tip */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-          <GitPullRequest className="w-5 h-5 text-cyan-400" />
-          Tip: Convoys and Pull Requests
-        </h3>
-        <p className="text-slate-400">
-          When agents complete beads, they create PRs. Convoys help you track which PRs belong together,
-          making it easier to review and merge related changes. You can even configure agents to only merge
-          when all convoy beads are complete.
-        </p>
-      </div>
-
-      {/* Current Status */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 text-center">
-        <Boxes className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-        <p className="text-slate-400">No convoys found</p>
-        <p className="text-sm text-slate-500 mt-2">
-          Create your first convoy with <code className="text-cyan-400">gt convoy create "name"</code>
-        </p>
-      </div>
+      <CollapsibleHelp title="Convoys and Pull Requests">
+        <div className="flex items-start gap-3">
+          <GitPullRequest className="w-5 h-5 text-cyan-400 mt-0.5" />
+          <p className="text-slate-400">
+            When agents complete beads, they create PRs. Convoys help you track which PRs belong together,
+            making it easier to review and merge related changes. You can even configure agents to only merge
+            when all convoy beads are complete.
+          </p>
+        </div>
+      </CollapsibleHelp>
     </div>
   );
 }

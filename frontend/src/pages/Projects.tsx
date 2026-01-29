@@ -12,6 +12,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { useState } from 'react';
+import CollapsibleHelp from '../components/CollapsibleHelp';
 
 interface Project {
   id: string;
@@ -162,8 +163,7 @@ export default function Projects() {
       )}
 
       {/* Help section */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="font-semibold text-white mb-3">How Projects Work</h3>
+      <CollapsibleHelp title="How Projects Work">
         <div className="grid md:grid-cols-2 gap-4 text-sm text-slate-400">
           <div>
             <p className="text-white font-medium mb-1">Track Multiple Repos</p>
@@ -182,7 +182,7 @@ export default function Projects() {
             <p>Active Claude Code sessions are automatically linked to their project.</p>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
     </div>
   );
 }

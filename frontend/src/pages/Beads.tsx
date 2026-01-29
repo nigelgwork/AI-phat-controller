@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Circle, GitBranch, Terminal, FolderGit, Plus, ArrowRight } from 'lucide-react';
+import { Circle, ArrowRight } from 'lucide-react';
+import CollapsibleHelp from '../components/CollapsibleHelp';
 
 interface Bead {
   id: string;
@@ -67,14 +68,22 @@ export default function Beads() {
 function EmptyState() {
   return (
     <div className="space-y-6">
-      {/* What are Beads */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+      {/* No beads message */}
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 text-center">
+        <Circle className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+        <p className="text-slate-400">No beads found</p>
+        <p className="text-sm text-slate-500 mt-2">
+          Initialize beads with <code className="text-cyan-400">bd init</code> in your project
+        </p>
+      </div>
+
+      {/* Collapsible help sections */}
+      <CollapsibleHelp title="What are Beads?">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-cyan-500/20 rounded-lg">
             <Circle className="w-6 h-6 text-cyan-400" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white mb-2">What are Beads?</h3>
             <p className="text-slate-400 mb-4">
               Beads are <strong className="text-white">atomic work items</strong> - like issues or tasks,
               but designed for AI agents. Each bead represents a single unit of work that Claude Code
@@ -89,14 +98,9 @@ function EmptyState() {
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
 
-      {/* How it integrates */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <GitBranch className="w-5 h-5 text-cyan-400" />
-          How Beads Work with Your Git Repos
-        </h3>
+      <CollapsibleHelp title="How Beads Work with Git">
         <div className="space-y-4 text-slate-400">
           <p>
             Beads are stored in a <code className="text-cyan-400 bg-slate-900 px-1 rounded">.beads/</code> folder
@@ -110,15 +114,9 @@ function EmptyState() {
             <div className="text-cyan-400 pl-4">└── beads.jsonl  ← Work items stored here</div>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
 
-      {/* Getting Started */}
-      <div className="bg-gradient-to-br from-cyan-500/10 to-slate-800 rounded-lg p-6 border border-cyan-500/30">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Plus className="w-5 h-5 text-cyan-400" />
-          Get Started with Your Project
-        </h3>
-
+      <CollapsibleHelp title="Getting Started">
         <div className="space-y-4">
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-sm font-bold">1</div>
@@ -150,14 +148,9 @@ function EmptyState() {
             </div>
           </div>
         </div>
-      </div>
+      </CollapsibleHelp>
 
-      {/* Claude Code Integration */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Terminal className="w-5 h-5 text-cyan-400" />
-          Using with Claude Code
-        </h3>
+      <CollapsibleHelp title="Using with Claude Code">
         <div className="space-y-3 text-slate-400">
           <p>Once you have beads, you can:</p>
           <ul className="space-y-2 ml-4">
@@ -175,7 +168,7 @@ function EmptyState() {
             </li>
           </ul>
         </div>
-      </div>
+      </CollapsibleHelp>
     </div>
   );
 }

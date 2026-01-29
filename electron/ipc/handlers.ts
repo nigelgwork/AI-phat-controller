@@ -19,6 +19,8 @@ import {
   updateAgent,
   deleteAgent,
   getAgentPlugins,
+  copyAgentToWindows,
+  copyAgentToWsl,
   ClaudeAgent,
 } from '../services/claude-agents';
 
@@ -195,5 +197,13 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('agents:plugins', async () => {
     return getAgentPlugins();
+  });
+
+  ipcMain.handle('agents:copyToWindows', async (_, id: string) => {
+    return copyAgentToWindows(id);
+  });
+
+  ipcMain.handle('agents:copyToWsl', async (_, id: string) => {
+    return copyAgentToWsl(id);
   });
 }
