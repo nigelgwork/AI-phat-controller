@@ -1,0 +1,309 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { app } from 'electron';
+
+const fsPromises = fs.promises;
+
+export interface ClaudeAgent {
+  id: string;              // plugin:filename (e.g., "custom-agents:code-architect")
+  name: string;            // from frontmatter
+  description: string;     // from frontmatter
+  model?: string;
+  color?: string;
+  tools?: string[];
+  content: string;         // full markdown body (system prompt)
+  filePath: string;        // absolute path to .md file
+  pluginName: string;      // which plugin it belongs to
+  isCustom: boolean;       // true if in user's custom plugin
+}
+
+export interface AgentPlugin {
+  name: string;
+  path: string;
+  agentCount: number;
+  isCustom: boolean;
+}
+
+// Parse YAML-like frontmatter from an agent .md file
+function parseFrontmatter(raw: string): { meta: Record<string, unknown>; body: string } {
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return { meta: {}, body: raw };
+  }
+
+  const yamlBlock = match[1];
+  const body = match[2];
+  const meta: Record<string, unknown> = {};
+
+  for (const line of yamlBlock.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) continue;
+
+    const key = trimmed.slice(0, colonIdx).trim();
+    let value: unknown = trimmed.slice(colonIdx + 1).trim();
+
+    // Remove surrounding quotes
+    if (typeof value === 'string' && /^["'].*["']$/.test(value)) {
+      value = (value as string).slice(1, -1);
+    }
+
+    // Parse arrays: ["a", "b", "c"]
+    if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        // Keep as string if parse fails
+      }
+    }
+
+    meta[key] = value;
+  }
+
+  return { meta, body };
+}
+
+// Serialize agent back to frontmatter + markdown
+function serializeAgent(agent: Partial<ClaudeAgent>): string {
+  const lines: string[] = ['---'];
+
+  if (agent.name) lines.push(`name: ${agent.name}`);
+  if (agent.description) lines.push(`description: "${agent.description}"`);
+  if (agent.model) lines.push(`model: ${agent.model}`);
+  if (agent.color) lines.push(`color: ${agent.color}`);
+  if (agent.tools && agent.tools.length > 0) {
+    lines.push(`tools: ${JSON.stringify(agent.tools)}`);
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push(agent.content || '');
+
+  return lines.join('\n');
+}
+
+// Parse a single agent .md file
+async function parseAgentFile(filePath: string, pluginName: string, isCustom: boolean): Promise<ClaudeAgent | null> {
+  try {
+    const raw = await fsPromises.readFile(filePath, 'utf-8');
+    const { meta, body } = parseFrontmatter(raw);
+    const basename = path.basename(filePath, '.md');
+
+    return {
+      id: `${pluginName}:${basename}`,
+      name: (meta.name as string) || basename,
+      description: (meta.description as string) || '',
+      model: meta.model as string | undefined,
+      color: meta.color as string | undefined,
+      tools: Array.isArray(meta.tools) ? meta.tools : undefined,
+      content: body.trim(),
+      filePath,
+      pluginName,
+      isCustom,
+    };
+  } catch (err) {
+    console.error(`Error parsing agent file ${filePath}:`, err);
+    return null;
+  }
+}
+
+// Get the custom plugin directory path
+function getCustomPluginDir(): string {
+  const homeDir = app.getPath('home');
+  return path.join(homeDir, '.claude', 'plugins', 'custom-agents');
+}
+
+// Get the custom agents directory
+function getCustomAgentsDir(): string {
+  return path.join(getCustomPluginDir(), 'agents');
+}
+
+// Ensure the custom plugin directory exists with plugin.json
+async function ensureCustomPluginDir(): Promise<void> {
+  const pluginDir = getCustomPluginDir();
+  const agentsDir = getCustomAgentsDir();
+
+  await fsPromises.mkdir(agentsDir, { recursive: true });
+
+  const pluginJsonPath = path.join(pluginDir, 'plugin.json');
+  try {
+    await fsPromises.access(pluginJsonPath);
+  } catch {
+    // Create plugin.json
+    const pluginJson = {
+      name: 'custom-agents',
+      description: 'User-created custom agents',
+      version: '1.0.0',
+    };
+    await fsPromises.writeFile(pluginJsonPath, JSON.stringify(pluginJson, null, 2), 'utf-8');
+  }
+}
+
+// Get all plugin directories that contain agents
+function getPluginDirs(): string[] {
+  const homeDir = app.getPath('home');
+  const pluginsRoot = path.join(homeDir, '.claude', 'plugins');
+  const dirs: string[] = [];
+
+  try {
+    if (!fs.existsSync(pluginsRoot)) return dirs;
+    const entries = fs.readdirSync(pluginsRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        dirs.push(path.join(pluginsRoot, entry.name));
+      }
+    }
+  } catch {
+    // Plugins directory doesn't exist yet
+  }
+
+  return dirs;
+}
+
+// Scan a plugin directory for agent .md files
+async function scanPluginForAgents(pluginDir: string): Promise<ClaudeAgent[]> {
+  const agents: ClaudeAgent[] = [];
+  const pluginName = path.basename(pluginDir);
+  const isCustom = pluginName === 'custom-agents';
+
+  // Check for agents in an 'agents' subdirectory first, then root
+  const agentsDirs = [
+    path.join(pluginDir, 'agents'),
+    pluginDir,
+  ];
+
+  for (const dir of agentsDirs) {
+    try {
+      const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'README.md') {
+          const filePath = path.join(dir, entry.name);
+          const agent = await parseAgentFile(filePath, pluginName, isCustom);
+          if (agent) {
+            agents.push(agent);
+          }
+        }
+      }
+    } catch {
+      // Directory doesn't exist, skip
+    }
+  }
+
+  return agents;
+}
+
+// List all agents from all plugins
+export async function listAgents(): Promise<ClaudeAgent[]> {
+  const pluginDirs = getPluginDirs();
+  const allAgents: ClaudeAgent[] = [];
+
+  for (const dir of pluginDirs) {
+    const agents = await scanPluginForAgents(dir);
+    allAgents.push(...agents);
+  }
+
+  // Deduplicate by id (agents dir takes priority over root)
+  const seen = new Map<string, ClaudeAgent>();
+  for (const agent of allAgents) {
+    if (!seen.has(agent.id)) {
+      seen.set(agent.id, agent);
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+// Get a specific agent by id
+export async function getAgent(id: string): Promise<ClaudeAgent | null> {
+  const agents = await listAgents();
+  return agents.find(a => a.id === id) || null;
+}
+
+// Create a new custom agent
+export async function createAgent(agent: Partial<ClaudeAgent>): Promise<ClaudeAgent> {
+  await ensureCustomPluginDir();
+  const agentsDir = getCustomAgentsDir();
+
+  // Generate filename from name
+  const safeName = (agent.name || 'new-agent')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  let filename = `${safeName}.md`;
+  let filePath = path.join(agentsDir, filename);
+
+  // Avoid collisions
+  let counter = 1;
+  while (fs.existsSync(filePath)) {
+    filename = `${safeName}-${counter}.md`;
+    filePath = path.join(agentsDir, filename);
+    counter++;
+  }
+
+  const content = serializeAgent(agent);
+  await fsPromises.writeFile(filePath, content, 'utf-8');
+
+  const created = await parseAgentFile(filePath, 'custom-agents', true);
+  if (!created) {
+    throw new Error('Failed to parse newly created agent file');
+  }
+  return created;
+}
+
+// Update an existing agent
+export async function updateAgent(id: string, updates: Partial<ClaudeAgent>): Promise<ClaudeAgent> {
+  const existing = await getAgent(id);
+  if (!existing) {
+    throw new Error(`Agent not found: ${id}`);
+  }
+
+  const merged: Partial<ClaudeAgent> = {
+    ...existing,
+    ...updates,
+  };
+
+  const content = serializeAgent(merged);
+  await fsPromises.writeFile(existing.filePath, content, 'utf-8');
+
+  const updated = await parseAgentFile(existing.filePath, existing.pluginName, existing.isCustom);
+  if (!updated) {
+    throw new Error('Failed to parse updated agent file');
+  }
+  return updated;
+}
+
+// Delete a custom agent
+export async function deleteAgent(id: string): Promise<void> {
+  const agent = await getAgent(id);
+  if (!agent) {
+    throw new Error(`Agent not found: ${id}`);
+  }
+  if (!agent.isCustom) {
+    throw new Error('Cannot delete non-custom agents');
+  }
+
+  await fsPromises.unlink(agent.filePath);
+}
+
+// Get list of plugins that have agents
+export async function getAgentPlugins(): Promise<AgentPlugin[]> {
+  const pluginDirs = getPluginDirs();
+  const plugins: AgentPlugin[] = [];
+
+  for (const dir of pluginDirs) {
+    const agents = await scanPluginForAgents(dir);
+    if (agents.length > 0) {
+      plugins.push({
+        name: path.basename(dir),
+        path: dir,
+        agentCount: agents.length,
+        isCustom: path.basename(dir) === 'custom-agents',
+      });
+    }
+  }
+
+  return plugins;
+}

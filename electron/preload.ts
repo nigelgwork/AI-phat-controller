@@ -27,6 +27,7 @@ export interface Project {
   name: string;
   path: string;
   hasBeads: boolean;
+  hasClaude: boolean;
   lastModified?: string;
   gitRemote?: string;
   gitBranch?: string;
@@ -38,6 +39,29 @@ export interface ClaudeSession {
   projectName?: string;
   command: string;
   startTime?: string;
+  source?: 'windows' | 'wsl' | 'history';
+  status?: 'running' | 'recent';
+  sessionId?: string;
+}
+
+export interface ClaudeAgent {
+  id: string;
+  name: string;
+  description: string;
+  model?: string;
+  color?: string;
+  tools?: string[];
+  content: string;
+  filePath: string;
+  pluginName: string;
+  isCustom: boolean;
+}
+
+export interface AgentPlugin {
+  name: string;
+  path: string;
+  agentCount: number;
+  isCustom: boolean;
 }
 
 export interface SystemStatus {
@@ -141,6 +165,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Debug info
   getDebugInfo: (): Promise<DebugInfo> => ipcRenderer.invoke('app:debugInfo'),
 
+  // Agent management
+  listAgents: (): Promise<ClaudeAgent[]> => ipcRenderer.invoke('agents:list'),
+  getAgent: (id: string): Promise<ClaudeAgent | null> => ipcRenderer.invoke('agents:get', id),
+  createAgent: (agent: Partial<ClaudeAgent>): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:create', agent),
+  updateAgent: (id: string, updates: Partial<ClaudeAgent>): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:update', id, updates),
+  deleteAgent: (id: string): Promise<void> => ipcRenderer.invoke('agents:delete', id),
+  getAgentPlugins: (): Promise<AgentPlugin[]> => ipcRenderer.invoke('agents:plugins'),
+
   // Event listeners
   onUpdateChecking: (callback: () => void) => {
     const handler = () => callback();
@@ -222,6 +254,13 @@ declare global {
       getClaudeSessions: () => Promise<ClaudeSession[]>;
       // System status
       getSystemStatus: () => Promise<SystemStatus>;
+      // Agent management
+      listAgents: () => Promise<ClaudeAgent[]>;
+      getAgent: (id: string) => Promise<ClaudeAgent | null>;
+      createAgent: (agent: Partial<ClaudeAgent>) => Promise<ClaudeAgent>;
+      updateAgent: (id: string, updates: Partial<ClaudeAgent>) => Promise<ClaudeAgent>;
+      deleteAgent: (id: string) => Promise<void>;
+      getAgentPlugins: () => Promise<AgentPlugin[]>;
     };
   }
 }

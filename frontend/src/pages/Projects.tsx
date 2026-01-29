@@ -6,10 +6,10 @@ import {
   RefreshCw,
   Search,
   GitBranch,
-  Circle,
   ExternalLink,
   FolderOpen,
   Check,
+  Bot,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -18,6 +18,7 @@ interface Project {
   name: string;
   path: string;
   hasBeads: boolean;
+  hasClaude: boolean;
   lastModified?: string;
   gitRemote?: string;
   gitBranch?: string;
@@ -195,8 +196,14 @@ function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => v
     <div className="p-4 hover:bg-slate-700/50 transition-colors">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-medium text-white">{project.name}</span>
+            {project.hasClaude && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded">
+                <Bot size={10} />
+                CLAUDE.md
+              </span>
+            )}
             {project.hasBeads && (
               <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded">
                 Has Beads
@@ -254,9 +261,15 @@ function DiscoveredRow({
     <div className="p-4 hover:bg-slate-700/50 transition-colors">
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <FolderOpen size={16} className="text-slate-400" />
             <span className="font-medium text-white">{project.name}</span>
+            {project.hasClaude && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded">
+                <Bot size={10} />
+                CLAUDE.md
+              </span>
+            )}
             {project.hasBeads && (
               <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded">
                 Has Beads

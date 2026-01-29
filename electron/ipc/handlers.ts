@@ -12,6 +12,15 @@ import {
   detectClaudeSessions,
   getSystemStatus,
 } from '../services/projects';
+import {
+  listAgents,
+  getAgent,
+  createAgent,
+  updateAgent,
+  deleteAgent,
+  getAgentPlugins,
+  ClaudeAgent,
+} from '../services/claude-agents';
 
 // System prompt for Claude Code
 function getSystemPrompt(): string {
@@ -161,5 +170,30 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   // Debug info
   ipcMain.handle('app:debugInfo', async () => {
     return getDebugInfo();
+  });
+
+  // Agent handlers
+  ipcMain.handle('agents:list', async () => {
+    return listAgents();
+  });
+
+  ipcMain.handle('agents:get', async (_, id: string) => {
+    return getAgent(id);
+  });
+
+  ipcMain.handle('agents:create', async (_, agent: Partial<ClaudeAgent>) => {
+    return createAgent(agent);
+  });
+
+  ipcMain.handle('agents:update', async (_, id: string, updates: Partial<ClaudeAgent>) => {
+    return updateAgent(id, updates);
+  });
+
+  ipcMain.handle('agents:delete', async (_, id: string) => {
+    return deleteAgent(id);
+  });
+
+  ipcMain.handle('agents:plugins', async () => {
+    return getAgentPlugins();
   });
 }
