@@ -1,10 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { Circle, Users, Boxes, Activity, RefreshCw, FolderGit, Terminal } from 'lucide-react';
+import { Circle, Boxes, RefreshCw, FolderGit, Monitor } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+interface ClaudeSession {
+  pid: number;
+  workingDir: string;
+  projectName?: string;
+  command: string;
+  startTime?: string;
+  source?: 'windows' | 'wsl' | 'history';
+  status?: 'running' | 'recent';
+}
 
 interface SystemStatus {
   projects: { id: string; name: string; path: string; hasBeads: boolean }[];
-  sessions: { pid: number; workingDir: string; projectName?: string }[];
+  sessions: ClaudeSession[];
   discovered: { id: string; name: string; path: string }[];
 }
 
@@ -45,9 +55,9 @@ export default function Dashboard() {
             subtitle={discoveredCount > 0 ? `${discoveredCount} more found` : undefined}
           />
         </Link>
-        <Link to="/agents">
+        <Link to="/sessions">
           <StatCard
-            icon={Terminal}
+            icon={Monitor}
             label="Claude Sessions"
             value={sessionCount}
             color={sessionCount > 0 ? "text-green-400" : "text-slate-400"}
@@ -76,17 +86,44 @@ export default function Dashboard() {
       {/* Active Sessions Quick View */}
       {sessionCount > 0 && (
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-          <h3 className="text-sm font-medium text-slate-400 mb-3">Active Claude Sessions</h3>
-          <div className="space-y-2">
-            {systemStatus?.sessions?.slice(0, 3).map((session) => (
-              <div key={session.pid} className="flex items-center gap-3 text-sm">
-                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span className="text-white">{session.projectName || 'Claude Code'}</span>
-                <span className="text-slate-500 text-xs">PID: {session.pid}</span>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-slate-400">Active Claude Sessions</h3>
+            <Link to="/sessions" className="text-xs text-cyan-400 hover:text-cyan-300">
+              View all →
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {systemStatus?.sessions?.filter(s => s.status === 'running' || !s.status).slice(0, 3).map((session) => (
+              <div key={`${session.pid}-${session.source}`} className="p-3 bg-slate-900 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  <span className="font-medium text-white">{session.projectName || 'Claude Code'}</span>
+                  {session.source && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      session.source === 'wsl' ? 'bg-orange-500/20 text-orange-400' :
+                      session.source === 'windows' ? 'bg-blue-500/20 text-blue-400' :
+                      'bg-slate-600 text-slate-300'
+                    }`}>
+                      {session.source === 'wsl' ? 'WSL' : session.source === 'windows' ? 'Win' : 'History'}
+                    </span>
+                  )}
+                  <span className="text-slate-500 text-xs ml-auto">PID: {session.pid}</span>
+                </div>
+                {session.workingDir && (
+                  <p className="text-xs text-slate-400 truncate flex items-center gap-1">
+                    <FolderGit size={10} />
+                    {session.workingDir}
+                  </p>
+                )}
+                {session.command && session.command !== 'Recent session' && (
+                  <p className="text-xs text-slate-500 truncate mt-1 font-mono">
+                    {session.command}
+                  </p>
+                )}
               </div>
             ))}
             {sessionCount > 3 && (
-              <Link to="/agents" className="text-xs text-cyan-400 hover:text-cyan-300">
+              <Link to="/sessions" className="block text-center text-xs text-cyan-400 hover:text-cyan-300 py-2">
                 +{sessionCount - 3} more sessions →
               </Link>
             )}

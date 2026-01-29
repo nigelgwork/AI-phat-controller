@@ -141,37 +141,58 @@ async function ensureCustomPluginDir(): Promise<void> {
   }
 }
 
-// Get all plugin directories that contain agents
-function getPluginDirs(): string[] {
+// Get all directories that may contain agent definitions
+function getAgentSourceDirs(): { path: string; name: string; isCustom: boolean }[] {
   const homeDir = app.getPath('home');
-  const pluginsRoot = path.join(homeDir, '.claude', 'plugins');
-  const dirs: string[] = [];
+  const dirs: { path: string; name: string; isCustom: boolean }[] = [];
 
+  // Check commands directory (slash commands / agents)
+  const commandsDir = path.join(homeDir, '.claude', 'commands');
+  if (fs.existsSync(commandsDir)) {
+    dirs.push({ path: commandsDir, name: 'commands', isCustom: true });
+  }
+
+  // Check plugins directory
+  const pluginsRoot = path.join(homeDir, '.claude', 'plugins');
   try {
-    if (!fs.existsSync(pluginsRoot)) return dirs;
-    const entries = fs.readdirSync(pluginsRoot, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        dirs.push(path.join(pluginsRoot, entry.name));
+    if (fs.existsSync(pluginsRoot)) {
+      const entries = fs.readdirSync(pluginsRoot, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          dirs.push({
+            path: path.join(pluginsRoot, entry.name),
+            name: entry.name,
+            isCustom: entry.name === 'custom-agents'
+          });
+        }
       }
     }
   } catch {
     // Plugins directory doesn't exist yet
   }
 
+  // Custom agents directory
+  const customAgentsDir = getCustomAgentsDir();
+  if (fs.existsSync(customAgentsDir)) {
+    dirs.push({ path: customAgentsDir, name: 'custom-agents', isCustom: true });
+  }
+
   return dirs;
 }
 
-// Scan a plugin directory for agent .md files
-async function scanPluginForAgents(pluginDir: string): Promise<ClaudeAgent[]> {
+// Legacy function for backwards compatibility
+function getPluginDirs(): string[] {
+  return getAgentSourceDirs().map(d => d.path);
+}
+
+// Scan a directory for agent .md files
+async function scanDirForAgents(dirPath: string, sourceName: string, isCustom: boolean): Promise<ClaudeAgent[]> {
   const agents: ClaudeAgent[] = [];
-  const pluginName = path.basename(pluginDir);
-  const isCustom = pluginName === 'custom-agents';
 
   // Check for agents in an 'agents' subdirectory first, then root
   const agentsDirs = [
-    path.join(pluginDir, 'agents'),
-    pluginDir,
+    path.join(dirPath, 'agents'),
+    dirPath,
   ];
 
   for (const dir of agentsDirs) {
@@ -180,7 +201,7 @@ async function scanPluginForAgents(pluginDir: string): Promise<ClaudeAgent[]> {
       for (const entry of entries) {
         if (entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'README.md') {
           const filePath = path.join(dir, entry.name);
-          const agent = await parseAgentFile(filePath, pluginName, isCustom);
+          const agent = await parseAgentFile(filePath, sourceName, isCustom);
           if (agent) {
             agents.push(agent);
           }
@@ -194,17 +215,17 @@ async function scanPluginForAgents(pluginDir: string): Promise<ClaudeAgent[]> {
   return agents;
 }
 
-// List all agents from all plugins
+// List all agents from all sources (commands, plugins, custom)
 export async function listAgents(): Promise<ClaudeAgent[]> {
-  const pluginDirs = getPluginDirs();
+  const sources = getAgentSourceDirs();
   const allAgents: ClaudeAgent[] = [];
 
-  for (const dir of pluginDirs) {
-    const agents = await scanPluginForAgents(dir);
+  for (const source of sources) {
+    const agents = await scanDirForAgents(source.path, source.name, source.isCustom);
     allAgents.push(...agents);
   }
 
-  // Deduplicate by id (agents dir takes priority over root)
+  // Deduplicate by id (first occurrence wins)
   const seen = new Map<string, ClaudeAgent>();
   for (const agent of allAgents) {
     if (!seen.has(agent.id)) {

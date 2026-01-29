@@ -417,10 +417,10 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
   try {
     if (process.platform === 'win32') {
       // Windows: Use Get-CimInstance (modern) for broader process detection
-      // Search for @anthropic-ai, claude-code, or claude in command line
+      // Also get parent process info to find working directory
       try {
         const { stdout } = await execAsync(
-          `powershell -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and ($_.CommandLine -like '*@anthropic-ai*' -or $_.CommandLine -like '*claude-code*' -or $_.Name -like 'claude*') } | Select-Object ProcessId,Name,CommandLine,CreationDate | ConvertTo-Json"`,
+          `powershell -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and ($_.CommandLine -like '*@anthropic-ai*' -or $_.CommandLine -like '*claude-code*' -or $_.CommandLine -like '*claude*cli*' -or $_.Name -like 'claude*') } | Select-Object ProcessId,ParentProcessId,Name,CommandLine,CreationDate | ConvertTo-Json"`,
           { timeout: 15000 }
         );
 
@@ -445,6 +445,7 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
                 cmdLine.includes('--type=') ||
                 cmdLine.includes('crashpad') ||
                 cmdLine.includes('electron') ||
+                cmdLine.includes('AI-Controller') ||
                 procName.toLowerCase().includes('anthropicclaude')) {
               continue;
             }
@@ -464,17 +465,25 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
             // Try to extract working directory from command line
             let workingDir = '';
 
-            // Look for --cwd, --project, or -p flags
-            const cwdMatch = cmdLine.match(/(?:--cwd|--project|-p)[=\s]["']?([A-Za-z]:[^"'\s]+|\/[^"'\s]+)["']?/i);
+            // Look for --cwd, --project, or directory path arguments
+            const cwdMatch = cmdLine.match(/(?:--cwd|--project)[=\s]["']?([A-Za-z]:[^"'\s]+|\/[^"'\s]+)["']?/i);
             if (cwdMatch) {
               workingDir = cwdMatch[1];
             }
 
-            // Also try to find path in the command line
-            if (!workingDir) {
-              const pathMatch = cmdLine.match(/(?:cd\s+|cwd[=:]\s*)["']?([A-Za-z]:[\\\/][^"'\s]+)["']?/i);
-              if (pathMatch) {
-                workingDir = pathMatch[1];
+            // Try to get working directory from parent process (terminal)
+            if (!workingDir && proc.ParentProcessId) {
+              try {
+                const { stdout: parentInfo } = await execAsync(
+                  `powershell -Command "(Get-Process -Id ${proc.ParentProcessId} -ErrorAction SilentlyContinue).Path"`,
+                  { timeout: 3000 }
+                );
+                // If parent is a terminal, try to get its working directory
+                if (parentInfo.includes('WindowsTerminal') || parentInfo.includes('cmd.exe') || parentInfo.includes('powershell')) {
+                  // This is running in a terminal - we can try to find the session from history
+                }
+              } catch {
+                // Ignore
               }
             }
 
@@ -500,12 +509,35 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
 
             // Extract meaningful part of command for display
             let displayCmd = 'Claude Code CLI';
+            let sessionType = '';
+
             if (cmdLine.includes('--print') || cmdLine.match(/-p\s+["']/)) {
-              displayCmd = 'Claude Code (one-shot)';
+              displayCmd = 'One-shot query';
+              sessionType = 'print';
             } else if (cmdLine.includes('--resume') || cmdLine.includes('-r')) {
-              displayCmd = 'Claude Code (resumed session)';
+              displayCmd = 'Resumed session';
+              sessionType = 'resume';
             } else if (cmdLine.includes('--continue') || cmdLine.includes('-c')) {
-              displayCmd = 'Claude Code (continued)';
+              displayCmd = 'Continued session';
+              sessionType = 'continue';
+            } else if (cmdLine.includes('--dangerously-skip-permissions')) {
+              displayCmd = 'Auto-accept mode';
+              sessionType = 'auto';
+            }
+
+            // Try to extract any path-like arguments for context
+            if (!workingDir) {
+              // Look for Windows paths in the command
+              const winPathMatch = cmdLine.match(/([A-Za-z]:\\[^\s"']+)/);
+              if (winPathMatch && !winPathMatch[1].includes('node') && !winPathMatch[1].includes('npm')) {
+                workingDir = winPathMatch[1];
+              }
+            }
+
+            // Show more of the actual command for debugging
+            let commandPreview = cmdLine;
+            if (commandPreview.length > 100) {
+              commandPreview = commandPreview.substring(0, 100) + '...';
             }
 
             sessions.push({
@@ -628,13 +660,36 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
       }
     }
 
-    // Add recent sessions from history
+    // Add recent sessions from history and use them to fill in missing details
     const historySessions = await getRecentSessionsFromHistory();
+
+    // First, try to fill in missing working directories for running sessions
+    // by matching with recent history based on start time
+    for (const session of sessions) {
+      if (!session.workingDir && session.startTime) {
+        // Find a recent history session that started around the same time
+        const sessionStart = new Date(session.startTime).getTime();
+        for (const hist of historySessions) {
+          if (hist.startTime) {
+            const histStart = new Date(hist.startTime).getTime();
+            // If they started within 5 minutes of each other, they're probably the same session
+            if (Math.abs(sessionStart - histStart) < 5 * 60 * 1000) {
+              session.workingDir = hist.workingDir;
+              session.sessionId = hist.sessionId;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Add history sessions that aren't currently running
     for (const histSession of historySessions) {
-      // Check if this session is still running (by matching working directory)
+      // Check if this session is still running (by matching working directory or session ID)
       const isRunning = sessions.some(s =>
-        s.workingDir && histSession.workingDir &&
-        s.workingDir.toLowerCase() === histSession.workingDir.toLowerCase()
+        (s.workingDir && histSession.workingDir &&
+          s.workingDir.toLowerCase() === histSession.workingDir.toLowerCase()) ||
+        (s.sessionId && histSession.sessionId && s.sessionId === histSession.sessionId)
       );
 
       if (!isRunning) {
