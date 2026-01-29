@@ -319,8 +319,39 @@ export async function discoverGitRepos(): Promise<Project[]> {
   return discovered;
 }
 
-// Scan ~/.claude/projects/ for recent session files
-async function getRecentSessionsFromHistory(): Promise<ClaudeSession[]> {
+// Decode project path from ~/.claude/projects/ directory name
+function decodeProjectPath(encodedName: string): string {
+  try {
+    // The directory name is the path with / replaced by - and URL encoded
+    // e.g., "-git-AI-fat-controller" -> "/git/AI-fat-controller"
+    let decoded = encodedName;
+
+    // First try URL decoding
+    try {
+      decoded = decodeURIComponent(encodedName);
+    } catch {
+      // Not URL encoded, use as-is
+    }
+
+    // Replace leading dash with /
+    if (decoded.startsWith('-')) {
+      decoded = '/' + decoded.substring(1);
+    }
+
+    // Replace remaining dashes that look like path separators
+    // But be careful not to replace dashes that are part of names
+    // The pattern is: dashes at word boundaries are likely separators
+    decoded = decoded.replace(/-(?=[a-zA-Z])/g, '/');
+
+    return decoded;
+  } catch {
+    return encodedName;
+  }
+}
+
+// Scan ~/.claude/projects/ for session files
+// Returns sessions with isActive flag based on recent modification
+async function getSessionsFromHistory(activeThresholdMs: number = 2 * 60 * 1000): Promise<ClaudeSession[]> {
   const sessions: ClaudeSession[] = [];
   const homeDir = app.getPath('home');
   const projectsDir = path.join(homeDir, '.claude', 'projects');
@@ -353,40 +384,24 @@ async function getRecentSessionsFromHistory(): Promise<ClaudeSession[]> {
             const stats = await fsPromises.stat(filePath);
             if (stats.mtime.getTime() < oneDayAgo) continue;
 
-            // Parse the first line for session metadata
-            const content = await fsPromises.readFile(filePath, 'utf-8');
-            const firstLine = content.split('\n')[0];
+            const sessionId = path.basename(file, '.jsonl');
+            const timeSinceModified = now - stats.mtime.getTime();
+            const isActive = timeSinceModified < activeThresholdMs;
 
-            if (firstLine) {
-              try {
-                const meta = JSON.parse(firstLine);
-                const sessionId = path.basename(file, '.jsonl');
+            // Decode project path from directory name
+            const workingDir = decodeProjectPath(entry.name);
+            const projectName = path.basename(workingDir);
 
-                // Decode project path from directory name
-                let workingDir = '';
-                try {
-                  workingDir = decodeURIComponent(entry.name.replace(/-/g, '/'));
-                  if (!workingDir.startsWith('/') && !workingDir.match(/^[A-Za-z]:/)) {
-                    workingDir = '/' + workingDir;
-                  }
-                } catch {
-                  workingDir = entry.name;
-                }
-
-                sessions.push({
-                  pid: 0,
-                  workingDir,
-                  projectName: path.basename(workingDir),
-                  command: 'Recent session',
-                  startTime: stats.mtime.toISOString(),
-                  source: 'history',
-                  status: 'recent',
-                  sessionId,
-                });
-              } catch {
-                // Invalid JSON, skip
-              }
-            }
+            sessions.push({
+              pid: 0,
+              workingDir,
+              projectName,
+              command: isActive ? 'Active session' : 'Recent session',
+              startTime: stats.mtime.toISOString(),
+              source: 'history',
+              status: isActive ? 'running' : 'recent',
+              sessionId,
+            });
           } catch {
             // Can't read file, skip
           }
@@ -399,165 +414,38 @@ async function getRecentSessionsFromHistory(): Promise<ClaudeSession[]> {
     console.error('Error reading session history:', err);
   }
 
-  // Sort by start time, newest first
+  // Sort by modification time, newest first
   sessions.sort((a, b) => {
     if (!a.startTime || !b.startTime) return 0;
     return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
   });
 
-  // Return only the 10 most recent
-  return sessions.slice(0, 10);
+  return sessions;
+}
+
+// Legacy wrapper for backwards compatibility
+async function getRecentSessionsFromHistory(): Promise<ClaudeSession[]> {
+  const sessions = await getSessionsFromHistory();
+  return sessions.filter(s => s.status === 'recent').slice(0, 10);
 }
 
 // Detect running Claude Code sessions
 export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
   const sessions: ClaudeSession[] = [];
-  const runningPids = new Set<number>();
 
   try {
+    // PRIMARY SOURCE: Session history files in ~/.claude/projects/
+    // Active sessions = files modified in last 2 minutes
+    // Recent sessions = files modified in last 24 hours
+    const allHistorySessions = await getSessionsFromHistory(2 * 60 * 1000);
+    const activeSessions = allHistorySessions.filter(s => s.status === 'running');
+    const recentSessions = allHistorySessions.filter(s => s.status === 'recent').slice(0, 10);
+
+    // WSL: Can get working directory from /proc/{pid}/cwd
     if (process.platform === 'win32') {
-      // Windows: Use Get-CimInstance (modern) for broader process detection
-      // Also get parent process info to find working directory
-      try {
-        const { stdout } = await execAsync(
-          `powershell -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and ($_.CommandLine -like '*@anthropic-ai*' -or $_.CommandLine -like '*claude-code*' -or $_.CommandLine -like '*claude*cli*' -or $_.Name -like 'claude*') } | Select-Object ProcessId,ParentProcessId,Name,CommandLine,CreationDate | ConvertTo-Json"`,
-          { timeout: 15000 }
-        );
-
-        if (stdout.trim()) {
-          let processes;
-          try {
-            processes = JSON.parse(stdout);
-          } catch {
-            processes = [];
-          }
-          const procList = Array.isArray(processes) ? processes : [processes];
-          const seenPids = new Set<number>();
-
-          for (const proc of procList) {
-            if (!proc.ProcessId || seenPids.has(proc.ProcessId)) continue;
-
-            const cmdLine = proc.CommandLine || '';
-            const procName = proc.Name || '';
-
-            // Skip Electron/Desktop app processes
-            if (cmdLine.includes('AnthropicClaude') ||
-                cmdLine.includes('--type=') ||
-                cmdLine.includes('crashpad') ||
-                cmdLine.includes('electron') ||
-                cmdLine.includes('AI-Controller') ||
-                procName.toLowerCase().includes('anthropicclaude')) {
-              continue;
-            }
-
-            // Must have some indication it's Claude Code CLI
-            const lowerCmd = cmdLine.toLowerCase();
-            if (!lowerCmd.includes('@anthropic-ai') &&
-                !lowerCmd.includes('claude-code') &&
-                !lowerCmd.includes('claude') &&
-                !lowerCmd.includes('cli.js')) {
-              continue;
-            }
-
-            seenPids.add(proc.ProcessId);
-            runningPids.add(proc.ProcessId);
-
-            // Try to extract working directory from command line
-            let workingDir = '';
-
-            // Look for --cwd, --project, or directory path arguments
-            const cwdMatch = cmdLine.match(/(?:--cwd|--project)[=\s]["']?([A-Za-z]:[^"'\s]+|\/[^"'\s]+)["']?/i);
-            if (cwdMatch) {
-              workingDir = cwdMatch[1];
-            }
-
-            // Try to get working directory from parent process (terminal)
-            if (!workingDir && proc.ParentProcessId) {
-              try {
-                const { stdout: parentInfo } = await execAsync(
-                  `powershell -Command "(Get-Process -Id ${proc.ParentProcessId} -ErrorAction SilentlyContinue).Path"`,
-                  { timeout: 3000 }
-                );
-                // If parent is a terminal, try to get its working directory
-                if (parentInfo.includes('WindowsTerminal') || parentInfo.includes('cmd.exe') || parentInfo.includes('powershell')) {
-                  // This is running in a terminal - we can try to find the session from history
-                }
-              } catch {
-                // Ignore
-              }
-            }
-
-            // Parse start time from WMI date format
-            let startTime = '';
-            if (proc.CreationDate) {
-              // CIM returns ISO format or WMI format
-              if (typeof proc.CreationDate === 'string') {
-                if (proc.CreationDate.includes('T')) {
-                  startTime = proc.CreationDate;
-                } else {
-                  const match = proc.CreationDate.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
-                  if (match) {
-                    const date = new Date(
-                      parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]),
-                      parseInt(match[4]), parseInt(match[5]), parseInt(match[6])
-                    );
-                    startTime = date.toISOString();
-                  }
-                }
-              }
-            }
-
-            // Extract meaningful part of command for display
-            let displayCmd = 'Claude Code CLI';
-            let sessionType = '';
-
-            if (cmdLine.includes('--print') || cmdLine.match(/-p\s+["']/)) {
-              displayCmd = 'One-shot query';
-              sessionType = 'print';
-            } else if (cmdLine.includes('--resume') || cmdLine.includes('-r')) {
-              displayCmd = 'Resumed session';
-              sessionType = 'resume';
-            } else if (cmdLine.includes('--continue') || cmdLine.includes('-c')) {
-              displayCmd = 'Continued session';
-              sessionType = 'continue';
-            } else if (cmdLine.includes('--dangerously-skip-permissions')) {
-              displayCmd = 'Auto-accept mode';
-              sessionType = 'auto';
-            }
-
-            // Try to extract any path-like arguments for context
-            if (!workingDir) {
-              // Look for Windows paths in the command
-              const winPathMatch = cmdLine.match(/([A-Za-z]:\\[^\s"']+)/);
-              if (winPathMatch && !winPathMatch[1].includes('node') && !winPathMatch[1].includes('npm')) {
-                workingDir = winPathMatch[1];
-              }
-            }
-
-            // Show more of the actual command for debugging
-            let commandPreview = cmdLine;
-            if (commandPreview.length > 100) {
-              commandPreview = commandPreview.substring(0, 100) + '...';
-            }
-
-            sessions.push({
-              pid: proc.ProcessId,
-              workingDir,
-              command: displayCmd,
-              startTime,
-              source: 'windows',
-              status: 'running',
-            });
-          }
-        }
-      } catch (err) {
-        console.error('PowerShell detection failed:', err);
-      }
-
-      // Also check WSL for Claude Code sessions using pgrep
       try {
         const { stdout: wslOutput } = await execAsync(
-          'wsl.exe -e bash -c "pgrep -af claude 2>/dev/null || pgrep -af @anthropic-ai 2>/dev/null || true"',
+          'wsl.exe -e bash -c "pgrep -af claude 2>/dev/null || true"',
           { timeout: 10000 }
         );
 
@@ -572,45 +460,41 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
             const pid = parseInt(match[1]);
             const command = match[2];
 
-            // Skip if not actually claude CLI
-            const lowerCmd = command.toLowerCase();
-            if (!lowerCmd.includes('claude') && !lowerCmd.includes('@anthropic-ai')) {
-              continue;
-            }
+            // Skip grep/pgrep processes
+            if (command.includes('grep') || command.includes('pgrep')) continue;
 
-            // Skip grep processes
-            if (command.includes('grep') || command.includes('pgrep')) {
-              continue;
-            }
+            // Must be claude
+            if (!command.toLowerCase().includes('claude')) continue;
 
-            runningPids.add(pid);
-
-            // Try to get working directory
+            // Get working directory from /proc
             let workingDir = '';
+            let projectName = '';
             try {
               const { stdout: cwd } = await execAsync(
                 `wsl.exe -e bash -c "readlink -f /proc/${pid}/cwd 2>/dev/null"`,
                 { timeout: 3000 }
               );
               workingDir = cwd.trim();
+              projectName = path.basename(workingDir);
             } catch {
               // Ignore
             }
 
             sessions.push({
               pid,
-              workingDir: workingDir || '(WSL)',
-              command: 'Claude Code CLI (WSL)',
+              workingDir,
+              projectName: projectName || 'WSL Session',
+              command: workingDir ? `Working in ${projectName}` : 'Claude Code (WSL)',
               source: 'wsl',
               status: 'running',
             });
           }
         }
       } catch {
-        // WSL not available or no sessions
+        // WSL not available
       }
     } else {
-      // Unix-like: Use pgrep for more reliable detection
+      // Linux/Mac: Use pgrep and /proc
       try {
         const { stdout } = await execAsync(
           'pgrep -af "claude|@anthropic-ai" 2>/dev/null || true',
@@ -627,31 +511,23 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
           const pid = parseInt(match[1]);
           const command = match[2];
 
-          // Skip grep/pgrep processes
-          if (command.includes('grep') || command.includes('pgrep')) {
-            continue;
-          }
+          if (command.includes('grep') || command.includes('pgrep')) continue;
 
-          runningPids.add(pid);
-
-          // Try to get the working directory
           let workingDir = '';
           try {
             workingDir = await fsPromises.readlink(`/proc/${pid}/cwd`);
           } catch {
-            try {
-              const { stdout: cwd } = await execAsync(`lsof -p ${pid} 2>/dev/null | grep cwd | awk '{print $9}'`, { timeout: 2000 });
-              workingDir = cwd.trim();
-            } catch {
-              // Ignore
-            }
+            // Ignore
           }
+
+          const projectName = workingDir ? path.basename(workingDir) : '';
 
           sessions.push({
             pid,
             workingDir,
-            command,
-            source: process.platform === 'linux' ? 'wsl' : 'windows',
+            projectName: projectName || 'Claude Session',
+            command: workingDir ? `Working in ${projectName}` : command.substring(0, 50),
+            source: 'wsl',
             status: 'running',
           });
         }
@@ -660,76 +536,82 @@ export async function detectClaudeSessions(): Promise<ClaudeSession[]> {
       }
     }
 
-    // Add recent sessions from history and use them to fill in missing details
-    const historySessions = await getRecentSessionsFromHistory();
-
-    // First, try to fill in missing working directories for running sessions
-    // by matching with recent history based on start time
-    for (const session of sessions) {
-      if (!session.workingDir && session.startTime) {
-        // Find a recent history session that started around the same time
-        const sessionStart = new Date(session.startTime).getTime();
-        for (const hist of historySessions) {
-          if (hist.startTime) {
-            const histStart = new Date(hist.startTime).getTime();
-            // If they started within 5 minutes of each other, they're probably the same session
-            if (Math.abs(sessionStart - histStart) < 5 * 60 * 1000) {
-              session.workingDir = hist.workingDir;
-              session.sessionId = hist.sessionId;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Add history sessions that aren't currently running
-    for (const histSession of historySessions) {
-      // Check if this session is still running (by matching working directory or session ID)
-      const isRunning = sessions.some(s =>
-        (s.workingDir && histSession.workingDir &&
-          s.workingDir.toLowerCase() === histSession.workingDir.toLowerCase()) ||
-        (s.sessionId && histSession.sessionId && s.sessionId === histSession.sessionId)
+    // Add active sessions from history (for Windows where we can't get working dir from process)
+    for (const activeSession of activeSessions) {
+      // Check if we already have this session from process detection (by matching working dir)
+      const existingIdx = sessions.findIndex(s =>
+        s.workingDir && activeSession.workingDir &&
+        (s.workingDir.includes(activeSession.projectName || '') ||
+         activeSession.workingDir.includes(s.projectName || ''))
       );
 
-      if (!isRunning) {
-        sessions.push(histSession);
+      if (existingIdx >= 0) {
+        // Merge info: keep the PID from process detection, but use history for details
+        sessions[existingIdx].sessionId = activeSession.sessionId;
+        if (!sessions[existingIdx].workingDir) {
+          sessions[existingIdx].workingDir = activeSession.workingDir;
+        }
+        if (!sessions[existingIdx].projectName) {
+          sessions[existingIdx].projectName = activeSession.projectName;
+        }
+        sessions[existingIdx].command = `Working in ${sessions[existingIdx].projectName}`;
+      } else {
+        // This is an active session we didn't detect via process - add it
+        sessions.push({
+          pid: 0,
+          workingDir: activeSession.workingDir,
+          projectName: activeSession.projectName,
+          command: `Working in ${activeSession.projectName}`,
+          startTime: activeSession.startTime,
+          source: 'history',
+          status: 'running',
+          sessionId: activeSession.sessionId,
+        });
       }
     }
 
-    // Match sessions to known projects
+    // Add recent (non-active) sessions
+    for (const recentSession of recentSessions) {
+      const alreadyIncluded = sessions.some(s =>
+        s.sessionId === recentSession.sessionId ||
+        (s.workingDir && recentSession.workingDir &&
+         s.workingDir.toLowerCase() === recentSession.workingDir.toLowerCase())
+      );
+
+      if (!alreadyIncluded) {
+        sessions.push({
+          pid: 0,
+          workingDir: recentSession.workingDir,
+          projectName: recentSession.projectName,
+          command: `Recent: ${recentSession.projectName}`,
+          startTime: recentSession.startTime,
+          source: 'history',
+          status: 'recent',
+          sessionId: recentSession.sessionId,
+        });
+      }
+    }
+
+    // Match to known projects for additional info
     const projects = getProjects();
     for (const session of sessions) {
-      if (session.workingDir && !session.projectName) {
+      if (!session.projectName && session.workingDir) {
         const project = projects.find(p =>
           session.workingDir.toLowerCase().includes(p.path.toLowerCase()) ||
           p.path.toLowerCase().includes(session.workingDir.toLowerCase())
         );
         if (project) {
           session.projectName = project.name;
+        } else {
+          session.projectName = path.basename(session.workingDir);
         }
-      }
-
-      // Also try to extract project name from command line
-      if (!session.projectName && session.command) {
-        for (const project of projects) {
-          if (session.command.toLowerCase().includes(project.name.toLowerCase())) {
-            session.projectName = project.name;
-            break;
-          }
-        }
-      }
-
-      // Fallback: extract from working directory
-      if (!session.projectName && session.workingDir) {
-        session.projectName = path.basename(session.workingDir);
       }
     }
   } catch (err) {
     console.error('Error detecting Claude sessions:', err);
   }
 
-  // Sort: running first, then recent; within each group, by start time
+  // Sort: running first, then by modification time
   sessions.sort((a, b) => {
     if (a.status !== b.status) {
       return a.status === 'running' ? -1 : 1;

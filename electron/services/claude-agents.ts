@@ -1,8 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { app } from 'electron';
 
 const fsPromises = fs.promises;
+const execAsync = promisify(exec);
 
 export interface ClaudeAgent {
   id: string;              // plugin:filename (e.g., "custom-agents:code-architect")
@@ -141,18 +144,40 @@ async function ensureCustomPluginDir(): Promise<void> {
   }
 }
 
+// Get WSL home directory path accessible from Windows
+async function getWslHomePath(): Promise<string | null> {
+  if (process.platform !== 'win32') return null;
+
+  try {
+    const { stdout } = await execAsync('wsl.exe -e bash -c "echo $HOME"', { timeout: 5000 });
+    const wslHome = stdout.trim();
+    if (wslHome) {
+      // Convert WSL path to Windows UNC path: /home/user -> \\wsl$\Ubuntu\home\user
+      // First get the default distro name
+      const { stdout: distroOut } = await execAsync('wsl.exe -l -q', { timeout: 5000 });
+      const distro = distroOut.trim().split('\n')[0].replace(/\0/g, '').trim();
+      if (distro) {
+        return `\\\\wsl$\\${distro}${wslHome.replace(/\//g, '\\')}`;
+      }
+    }
+  } catch {
+    // WSL not available
+  }
+  return null;
+}
+
 // Get all directories that may contain agent definitions
 function getAgentSourceDirs(): { path: string; name: string; isCustom: boolean }[] {
   const homeDir = app.getPath('home');
   const dirs: { path: string; name: string; isCustom: boolean }[] = [];
 
-  // Check commands directory (slash commands / agents)
+  // Check Windows commands directory
   const commandsDir = path.join(homeDir, '.claude', 'commands');
   if (fs.existsSync(commandsDir)) {
     dirs.push({ path: commandsDir, name: 'commands', isCustom: true });
   }
 
-  // Check plugins directory
+  // Check Windows plugins directory
   const pluginsRoot = path.join(homeDir, '.claude', 'plugins');
   try {
     if (fs.existsSync(pluginsRoot)) {
@@ -175,6 +200,48 @@ function getAgentSourceDirs(): { path: string; name: string; isCustom: boolean }
   const customAgentsDir = getCustomAgentsDir();
   if (fs.existsSync(customAgentsDir)) {
     dirs.push({ path: customAgentsDir, name: 'custom-agents', isCustom: true });
+  }
+
+  return dirs;
+}
+
+// Get agent source directories including WSL (async version)
+async function getAgentSourceDirsAsync(): Promise<{ path: string; name: string; isCustom: boolean }[]> {
+  const dirs = getAgentSourceDirs();
+
+  // Also check WSL paths on Windows
+  if (process.platform === 'win32') {
+    try {
+      const wslHome = await getWslHomePath();
+      if (wslHome) {
+        // Check WSL commands directory
+        const wslCommandsDir = path.join(wslHome, '.claude', 'commands');
+        if (fs.existsSync(wslCommandsDir)) {
+          dirs.push({ path: wslCommandsDir, name: 'commands (WSL)', isCustom: true });
+        }
+
+        // Check WSL plugins directory
+        const wslPluginsRoot = path.join(wslHome, '.claude', 'plugins');
+        try {
+          if (fs.existsSync(wslPluginsRoot)) {
+            const entries = fs.readdirSync(wslPluginsRoot, { withFileTypes: true });
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                dirs.push({
+                  path: path.join(wslPluginsRoot, entry.name),
+                  name: `${entry.name} (WSL)`,
+                  isCustom: entry.name === 'custom-agents'
+                });
+              }
+            }
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    } catch {
+      // WSL not available
+    }
   }
 
   return dirs;
@@ -215,9 +282,9 @@ async function scanDirForAgents(dirPath: string, sourceName: string, isCustom: b
   return agents;
 }
 
-// List all agents from all sources (commands, plugins, custom)
+// List all agents from all sources (commands, plugins, custom, WSL)
 export async function listAgents(): Promise<ClaudeAgent[]> {
-  const sources = getAgentSourceDirs();
+  const sources = await getAgentSourceDirsAsync();
   const allAgents: ClaudeAgent[] = [];
 
   for (const source of sources) {
@@ -311,7 +378,7 @@ export async function deleteAgent(id: string): Promise<void> {
 
 // Get list of plugins that have agents
 export async function getAgentPlugins(): Promise<AgentPlugin[]> {
-  const sources = getAgentSourceDirs();
+  const sources = await getAgentSourceDirsAsync();
   const plugins: AgentPlugin[] = [];
 
   for (const source of sources) {
