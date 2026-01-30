@@ -171,13 +171,19 @@ function getAgentSourceDirs(): { path: string; name: string; isCustom: boolean }
   const homeDir = app.getPath('home');
   const dirs: { path: string; name: string; isCustom: boolean }[] = [];
 
-  // Check Windows commands directory
+  // Check ~/.claude/agents directory (where Claude Code stores agents directly)
+  const agentsDir = path.join(homeDir, '.claude', 'agents');
+  if (fs.existsSync(agentsDir)) {
+    dirs.push({ path: agentsDir, name: 'agents', isCustom: false });
+  }
+
+  // Check ~/.claude/commands directory (user slash commands)
   const commandsDir = path.join(homeDir, '.claude', 'commands');
   if (fs.existsSync(commandsDir)) {
     dirs.push({ path: commandsDir, name: 'commands', isCustom: true });
   }
 
-  // Check Windows plugins directory
+  // Check ~/.claude/plugins directory (plugin subdirectories)
   const pluginsRoot = path.join(homeDir, '.claude', 'plugins');
   try {
     if (fs.existsSync(pluginsRoot)) {
@@ -196,7 +202,7 @@ function getAgentSourceDirs(): { path: string; name: string; isCustom: boolean }
     // Plugins directory doesn't exist yet
   }
 
-  // Custom agents directory
+  // Custom agents directory (inside plugins)
   const customAgentsDir = getCustomAgentsDir();
   if (fs.existsSync(customAgentsDir)) {
     dirs.push({ path: customAgentsDir, name: 'custom-agents', isCustom: true });
@@ -214,6 +220,12 @@ async function getAgentSourceDirsAsync(): Promise<{ path: string; name: string; 
     try {
       const wslHome = await getWslHomePath();
       if (wslHome) {
+        // Check WSL agents directory
+        const wslAgentsDir = path.join(wslHome, '.claude', 'agents');
+        if (fs.existsSync(wslAgentsDir)) {
+          dirs.push({ path: wslAgentsDir, name: 'agents (WSL)', isCustom: false });
+        }
+
         // Check WSL commands directory
         const wslCommandsDir = path.join(wslHome, '.claude', 'commands');
         if (fs.existsSync(wslCommandsDir)) {
