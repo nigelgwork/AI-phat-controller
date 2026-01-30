@@ -23,6 +23,18 @@ import {
   copyAgentToWsl,
   ClaudeAgent,
 } from '../services/claude-agents';
+import {
+  listTasks,
+  getTaskById,
+  getTasksByProject,
+  createTask,
+  updateTask,
+  deleteTask,
+  getTasksStats,
+  buildTaskPrompt,
+  CreateTaskInput,
+  UpdateTaskInput,
+} from '../services/tasks';
 
 // System prompt for Claude Code
 function getSystemPrompt(): string {
@@ -205,5 +217,47 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('agents:copyToWsl', async (_, id: string) => {
     return copyAgentToWsl(id);
+  });
+
+  // Task handlers
+  ipcMain.handle('tasks:list', async () => {
+    return listTasks();
+  });
+
+  ipcMain.handle('tasks:get', async (_, id: string) => {
+    return getTaskById(id);
+  });
+
+  ipcMain.handle('tasks:byProject', async (_, projectId: string) => {
+    return getTasksByProject(projectId);
+  });
+
+  ipcMain.handle('tasks:create', async (_, input: CreateTaskInput) => {
+    return createTask(input);
+  });
+
+  ipcMain.handle('tasks:update', async (_, id: string, updates: UpdateTaskInput) => {
+    return updateTask(id, updates);
+  });
+
+  ipcMain.handle('tasks:delete', async (_, id: string) => {
+    return deleteTask(id);
+  });
+
+  ipcMain.handle('tasks:stats', async () => {
+    return getTasksStats();
+  });
+
+  ipcMain.handle('tasks:sendToClaude', async (_, id: string) => {
+    const task = getTaskById(id);
+    if (!task) {
+      return { success: false, error: 'Task not found' };
+    }
+
+    const prompt = buildTaskPrompt(task);
+    const executor = await getExecutor();
+
+    // Run Claude Code with the task as the prompt
+    return executor.runClaude(prompt, getSystemPrompt());
   });
 }

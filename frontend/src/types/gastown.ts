@@ -184,6 +184,52 @@ export interface TownEvent {
   message: string;
 }
 
+// Task Types
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  projectId?: string;
+  projectName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  projectId?: string;
+  projectName?: string;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  projectId?: string;
+  projectName?: string;
+}
+
+export interface TasksStats {
+  total: number;
+  todo: number;
+  inProgress: number;
+  done: number;
+  byPriority: {
+    low: number;
+    medium: number;
+    high: number;
+  };
+}
+
 // IPC Types for Electron
 export interface ExecuteResult {
   success: boolean;

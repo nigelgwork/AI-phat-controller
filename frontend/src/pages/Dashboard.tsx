@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Circle, Boxes, RefreshCw, FolderGit, Monitor } from 'lucide-react';
+import { CheckSquare, Boxes, RefreshCw, FolderGit, Monitor } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import type { TasksStats } from '../types/gastown';
 
 interface ClaudeSession {
   pid: number;
@@ -19,9 +20,9 @@ interface SystemStatus {
 }
 
 export default function Dashboard() {
-  const { data: stats } = useQuery({
-    queryKey: ['beads-stats'],
-    queryFn: () => window.electronAPI?.getBeadsStats(),
+  const { data: taskStats } = useQuery({
+    queryKey: ['tasks-stats'],
+    queryFn: () => window.electronAPI?.getTasksStats() as Promise<TasksStats>,
     refetchInterval: 30000,
   });
 
@@ -64,13 +65,13 @@ export default function Dashboard() {
             subtitle={sessionCount > 0 ? "Active" : "None running"}
           />
         </Link>
-        <Link to="/beads">
+        <Link to="/tasks">
           <StatCard
-            icon={Circle}
-            label="Beads"
-            value={stats?.total || 0}
+            icon={CheckSquare}
+            label="Tasks"
+            value={taskStats?.total || 0}
             color="text-purple-400"
-            subtitle={stats?.byStatus?.active ? `${stats.byStatus.active} active` : undefined}
+            subtitle={taskStats?.inProgress ? `${taskStats.inProgress} in progress` : undefined}
           />
         </Link>
         <Link to="/convoys">

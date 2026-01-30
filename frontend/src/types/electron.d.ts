@@ -1,4 +1,4 @@
-import type { Bead, AppSettings, ExecutionMode } from './gastown';
+import type { Bead, AppSettings, ExecutionMode, Task, CreateTaskInput, UpdateTaskInput, TasksStats } from './gastown';
 
 export interface ModeStatusResult {
   current: ExecutionMode;
@@ -159,6 +159,16 @@ interface ElectronAPI {
   getAgentPlugins: () => Promise<AgentPlugin[]>;
   copyAgentToWindows: (id: string) => Promise<ClaudeAgent>;
   copyAgentToWsl: (id: string) => Promise<ClaudeAgent>;
+
+  // Tasks
+  listTasks: () => Promise<Task[]>;
+  getTask: (id: string) => Promise<Task | null>;
+  getTasksByProject: (projectId: string) => Promise<Task[]>;
+  createTask: (input: CreateTaskInput) => Promise<Task>;
+  updateTask: (id: string, updates: UpdateTaskInput) => Promise<Task | null>;
+  deleteTask: (id: string) => Promise<boolean>;
+  getTasksStats: () => Promise<TasksStats>;
+  sendTaskToClaude: (id: string) => Promise<ExecuteResult>;
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;

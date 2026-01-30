@@ -5,7 +5,7 @@ import {
   Terminal,
   Monitor,
   Bot,
-  Circle,
+  CheckSquare,
   Boxes,
   Settings,
   FolderGit,
@@ -19,7 +19,7 @@ const navItems = [
   { to: '/projects', icon: FolderGit, label: 'Projects' },
   { to: '/sessions', icon: Monitor, label: 'Sessions' },
   { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/beads', icon: Circle, label: 'Beads' },
+  { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/convoys', icon: Boxes, label: 'Convoys' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

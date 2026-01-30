@@ -94,6 +94,52 @@ export interface DebugInfo {
   executionMode: 'windows' | 'wsl';
 }
 
+// Task types
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  projectId?: string;
+  projectName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  projectId?: string;
+  projectName?: string;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  projectId?: string;
+  projectName?: string;
+}
+
+export interface TasksStats {
+  total: number;
+  todo: number;
+  inProgress: number;
+  done: number;
+  byPriority: {
+    low: number;
+    medium: number;
+    high: number;
+  };
+}
+
 export interface AppSettings {
   executionMode: 'windows' | 'wsl';
   defaultMode: 'windows' | 'wsl' | 'auto';
@@ -174,6 +220,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAgentPlugins: (): Promise<AgentPlugin[]> => ipcRenderer.invoke('agents:plugins'),
   copyAgentToWindows: (id: string): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:copyToWindows', id),
   copyAgentToWsl: (id: string): Promise<ClaudeAgent> => ipcRenderer.invoke('agents:copyToWsl', id),
+
+  // Tasks
+  listTasks: (): Promise<Task[]> => ipcRenderer.invoke('tasks:list'),
+  getTask: (id: string): Promise<Task | null> => ipcRenderer.invoke('tasks:get', id),
+  getTasksByProject: (projectId: string): Promise<Task[]> => ipcRenderer.invoke('tasks:byProject', projectId),
+  createTask: (input: CreateTaskInput): Promise<Task> => ipcRenderer.invoke('tasks:create', input),
+  updateTask: (id: string, updates: UpdateTaskInput): Promise<Task | null> => ipcRenderer.invoke('tasks:update', id, updates),
+  deleteTask: (id: string): Promise<boolean> => ipcRenderer.invoke('tasks:delete', id),
+  getTasksStats: (): Promise<TasksStats> => ipcRenderer.invoke('tasks:stats'),
+  sendTaskToClaude: (id: string): Promise<ExecuteResult> => ipcRenderer.invoke('tasks:sendToClaude', id),
 
   // Event listeners
   onUpdateChecking: (callback: () => void) => {
@@ -265,6 +321,15 @@ declare global {
       getAgentPlugins: () => Promise<AgentPlugin[]>;
       copyAgentToWindows: (id: string) => Promise<ClaudeAgent>;
       copyAgentToWsl: (id: string) => Promise<ClaudeAgent>;
+      // Tasks
+      listTasks: () => Promise<Task[]>;
+      getTask: (id: string) => Promise<Task | null>;
+      getTasksByProject: (projectId: string) => Promise<Task[]>;
+      createTask: (input: CreateTaskInput) => Promise<Task>;
+      updateTask: (id: string, updates: UpdateTaskInput) => Promise<Task | null>;
+      deleteTask: (id: string) => Promise<boolean>;
+      getTasksStats: () => Promise<TasksStats>;
+      sendTaskToClaude: (id: string) => Promise<ExecuteResult>;
     };
   }
 }
