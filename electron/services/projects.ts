@@ -321,10 +321,10 @@ export async function discoverGitRepos(): Promise<Project[]> {
 
 // Decode project path from ~/.claude/projects/ directory name
 function decodeProjectPath(encodedName: string): string {
+  // This is a fallback - prefer reading cwd from session files
+  // Claude encodes paths by replacing / or \ with - and URL encoding special chars
+  // e.g., "/git/project" -> "-git-project", "C:\Users\name" -> "C--Users-name"
   try {
-    // The directory name is the path with / replaced by - and URL encoded
-    // e.g., "-git-AI-fat-controller" -> "/git/AI-fat-controller"
-    // Windows: "C%3A-Users-name-project" -> "C:/Users/name/project"
     let decoded = encodedName;
 
     // First try URL decoding
@@ -334,29 +334,23 @@ function decodeProjectPath(encodedName: string): string {
       // Not URL encoded, use as-is
     }
 
-    // Check if this looks like a Windows path (starts with drive letter)
-    // e.g., "C-Users-name" or after URL decode "C:-Users-name"
-    const windowsDriveMatch = decoded.match(/^([A-Za-z])[-:]/);
-    if (windowsDriveMatch) {
-      // Windows path: replace dashes with backslashes or forward slashes
-      // "C-Users-name-project" -> "C:/Users/name/project"
-      const driveLetter = windowsDriveMatch[1];
-      const rest = decoded.substring(windowsDriveMatch[0].length);
-      // Replace dashes that look like path separators
-      const pathPart = rest.replace(/-(?=[a-zA-Z])/g, '/');
-      decoded = `${driveLetter}:/${pathPart}`;
-      return decoded;
+    // Check for Windows path: starts with drive letter followed by --
+    // "C--Users-name" means "C:\Users\name" (: and \ both become -)
+    const windowsMatch = decoded.match(/^([A-Za-z])--(.*)$/);
+    if (windowsMatch) {
+      const driveLetter = windowsMatch[1];
+      const rest = windowsMatch[2];
+      // For Windows, replace dashes with / but this is imperfect
+      // for paths with hyphens in folder names
+      return `${driveLetter}:/${rest.replace(/-/g, '/')}`;
     }
 
-    // Unix path: Replace leading dash with /
+    // Unix path: starts with -
     if (decoded.startsWith('-')) {
-      decoded = '/' + decoded.substring(1);
+      // Simple approach: just replace leading dash with /
+      // Don't try to decode further - folder names may have hyphens
+      return '/' + decoded.substring(1).replace(/-/g, '/');
     }
-
-    // Replace remaining dashes that look like path separators
-    // But be careful not to replace dashes that are part of names
-    // The pattern is: dashes at word boundaries are likely separators
-    decoded = decoded.replace(/-(?=[a-zA-Z])/g, '/');
 
     return decoded;
   } catch {
@@ -403,8 +397,33 @@ async function getSessionsFromHistory(activeThresholdMs: number = 2 * 60 * 1000)
             const timeSinceModified = now - stats.mtime.getTime();
             const isActive = timeSinceModified < activeThresholdMs;
 
-            // Decode project path from directory name
-            const workingDir = decodeProjectPath(entry.name);
+            // Try to get working directory from session file content
+            // Session files contain cwd field in jsonl entries
+            let workingDir = '';
+            try {
+              const content = await fsPromises.readFile(filePath, 'utf-8');
+              const lines = content.split('\n').slice(0, 10); // Check first 10 lines
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const entry = JSON.parse(line);
+                  if (entry.cwd) {
+                    workingDir = entry.cwd;
+                    break;
+                  }
+                } catch {
+                  // Skip invalid JSON lines
+                }
+              }
+            } catch {
+              // Fall back to decoding folder name
+            }
+
+            // Fall back to decoding folder name if cwd not found in file
+            if (!workingDir) {
+              workingDir = decodeProjectPath(entry.name);
+            }
+
             const projectName = path.basename(workingDir);
 
             sessions.push({
