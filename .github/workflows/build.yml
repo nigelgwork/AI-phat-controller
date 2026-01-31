@@ -42,22 +42,34 @@ jobs:
         shell: pwsh
         run: |
           vcpkg install icu:x64-windows
-          # Output paths for next step
-          echo "ICU installed at: $env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          # Set ICU paths using short path names to avoid spaces
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          $icuInclude = "$vcpkgRoot\installed\x64-windows\include"
+          $icuLib = "$vcpkgRoot\installed\x64-windows\lib"
+          # Convert to short paths to handle spaces
+          $shortInclude = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($icuInclude).ShortPath
+          $shortLib = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($icuLib).ShortPath
+          echo "ICU_INCLUDE=$shortInclude" >> $env:GITHUB_ENV
+          echo "ICU_LIB=$shortLib" >> $env:GITHUB_ENV
+          echo "ICU include: $shortInclude"
+          echo "ICU lib: $shortLib"
 
       - name: Build Go tools (gt and bd)
         shell: bash
-        env:
-          CGO_ENABLED: "1"
-          CGO_CFLAGS: "-I${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows/include"
-          CGO_LDFLAGS: "-L${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows/lib -licuuc -licuin -licudt"
-          CGO_CXXFLAGS: "-I${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows/include"
         run: |
           mkdir -p resources/bin
+
+          # Set CGO flags with properly escaped paths
+          export CGO_ENABLED=1
+          export CGO_CFLAGS="-I${ICU_INCLUDE}"
+          export CGO_CXXFLAGS="-I${ICU_INCLUDE}"
+          export CGO_LDFLAGS="-L${ICU_LIB} -licuuc -licuin -licudt"
 
           # Debug: Show CGO flags
           echo "CGO_CFLAGS: $CGO_CFLAGS"
           echo "CGO_LDFLAGS: $CGO_LDFLAGS"
+          echo "ICU_INCLUDE: $ICU_INCLUDE"
+          echo "ICU_LIB: $ICU_LIB"
 
           # Clone and build gt (pinned to v0.5.0 for Windows compatibility)
           # Note: gastown HEAD uses syscall.Kill which doesn't work on Windows
