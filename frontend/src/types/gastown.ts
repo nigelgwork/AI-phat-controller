@@ -272,11 +272,37 @@ export interface AppSettings {
   };
 }
 
-// Mayor (AI Project Manager) Types
-export type MayorStatus = 'idle' | 'running' | 'paused' | 'waiting_approval';
+// Controller (Phat Controller - AI Project Manager) Types
+export type ControllerStatus = 'idle' | 'running' | 'paused' | 'waiting_approval' | 'waiting_input';
+export type ControllerPhase = 'planning' | 'executing' | 'reviewing' | 'idle';
 
-export interface MayorState {
-  status: MayorStatus;
+export interface ProgressState {
+  phase: ControllerPhase;
+  step: number;
+  totalSteps: number;
+  stepDescription: string;
+  startedAt: string;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  limit: number;
+  resetAt: string;
+}
+
+export interface UsageLimitConfig {
+  maxTokensPerHour: number;
+  maxTokensPerDay: number;
+  pauseThreshold: number;
+  warningThreshold: number;
+  autoResumeOnReset: boolean;
+}
+
+export type UsageLimitStatus = 'ok' | 'warning' | 'approaching_limit' | 'at_limit';
+
+export interface ControllerState {
+  status: ControllerStatus;
   currentTaskId: string | null;
   currentAction: string | null;
   startedAt: string | null;
@@ -284,6 +310,13 @@ export interface MayorState {
   approvedCount: number;
   rejectedCount: number;
   errorCount: number;
+  currentProgress: ProgressState | null;
+  conversationSessionId: string | null;
+  tokenUsage: TokenUsage;
+  usageLimitConfig: UsageLimitConfig;
+  dailyTokenUsage: { input: number; output: number; date: string };
+  usageLimitStatus: UsageLimitStatus;
+  pausedDueToLimit: boolean;
 }
 
 export type ApprovalActionType = 'planning' | 'architecture' | 'git_push' | 'large_edit';
@@ -311,3 +344,134 @@ export interface ActionLog {
   duration: number;
   timestamp: string;
 }
+
+// Conversation Types
+export interface ConversationEntry {
+  id: string;
+  timestamp: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  projectId?: string;
+  taskId?: string;
+  tokens?: { input: number; output: number };
+}
+
+export interface ConversationSession {
+  id: string;
+  projectId: string;
+  projectName: string;
+  startedAt: string;
+  lastActivityAt: string;
+  entryCount: number;
+  totalTokens: { input: number; output: number };
+  summary?: string;
+}
+
+// ntfy notification types
+export interface NtfyConfig {
+  enabled: boolean;
+  serverUrl: string;
+  topic: string;
+  responseTopic?: string;
+  priority: 'min' | 'low' | 'default' | 'high' | 'urgent';
+  authToken?: string;
+  enableDesktopNotifications: boolean;
+}
+
+export interface PendingQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  freeText: boolean;
+  taskId: string;
+  taskTitle: string;
+  status: 'pending' | 'answered' | 'expired';
+  answer?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+// Project Brief Types
+export interface ProjectBrief {
+  id: string;
+  projectId: string;
+  projectPath: string;
+  projectName: string;
+  createdAt: string;
+  updatedAt: string;
+  summary: string;
+  techStack: string[];
+  keyFiles: Array<{ path: string; purpose: string }>;
+  architecture: string;
+  recentChanges: Array<{ date: string; summary: string; hash: string }>;
+  activeWork: string[];
+  suggestedTasks: Array<{ title: string; description: string; priority: 'low' | 'medium' | 'high' }>;
+  codeMetrics?: {
+    totalFiles: number;
+    totalLines: number;
+    languages: Record<string, number>;
+  };
+}
+
+export interface DeepDivePlan {
+  id: string;
+  projectId: string;
+  projectName: string;
+  createdAt: string;
+  status: 'draft' | 'approved' | 'in_progress' | 'completed';
+  phases: Array<{
+    id: string;
+    name: string;
+    description: string;
+    tasks: Array<{
+      id: string;
+      title: string;
+      description: string;
+      status: 'pending' | 'in_progress' | 'completed';
+      estimatedComplexity: 'low' | 'medium' | 'high';
+    }>;
+  }>;
+  totalTasks: number;
+  completedTasks: number;
+}
+
+export interface NewProjectSpec {
+  name: string;
+  description: string;
+  type: 'web' | 'cli' | 'library' | 'api' | 'desktop' | 'mobile' | 'other';
+  techStack: string[];
+  features: string[];
+  structure?: Record<string, string>;
+}
+
+// Screenshot Types
+export interface CaptureOptions {
+  display?: number;
+  region?: { x: number; y: number; width: number; height: number };
+}
+
+export interface ScreenshotResult {
+  success: boolean;
+  filePath?: string;
+  base64?: string;
+  width?: number;
+  height?: number;
+  error?: string;
+}
+
+export interface ScreenAnalysis {
+  success: boolean;
+  analysis?: string;
+  error?: string;
+}
+
+export interface UIVerificationResult {
+  found: boolean;
+  confidence: string;
+  details: string;
+  error?: string;
+}
+
+// Backwards compatibility aliases
+export type MayorStatus = ControllerStatus;
+export type MayorState = ControllerState;

@@ -36,16 +36,71 @@ import {
   UpdateTaskInput,
 } from '../services/tasks';
 import {
-  getMayorState,
-  activateMayor,
-  deactivateMayor,
-  pauseMayor,
-  resumeMayor,
+  getControllerState,
+  activateController,
+  deactivateController,
+  pauseController,
+  resumeController,
   getApprovalQueue,
   approveRequest,
   rejectRequest,
   getActionLogs,
-} from '../services/mayor';
+  updateProgress,
+  setProgress,
+  clearProgress,
+  updateTokenUsage,
+  resetTokenUsage,
+  setConversationSession,
+  getUsageLimitConfig,
+  updateUsageLimitConfig,
+  getUsagePercentages,
+} from '../services/controller';
+import {
+  getNtfyConfig,
+  setNtfyConfig,
+  sendNotification,
+  getPendingQuestions,
+  askQuestion,
+  answerQuestion,
+  startPolling,
+  stopPolling,
+  testNtfyConnection,
+  NtfyConfig,
+} from '../services/ntfy';
+import {
+  generateProjectBrief,
+  getProjectBrief,
+  deleteProjectBrief,
+  listProjectBriefs,
+  generateDeepDivePlan,
+  getDeepDivePlan,
+  updateDeepDivePlan,
+  deleteDeepDivePlan,
+  scaffoldNewProject,
+  NewProjectSpec,
+} from '../services/project-briefs';
+import {
+  createConversationSession,
+  appendConversationEntry,
+  loadConversation,
+  listConversationSessions,
+  getConversationSession,
+  updateConversationSession,
+  deleteConversationSession,
+  getRecentConversations,
+  searchConversations,
+  getConversationStats,
+} from '../services/conversations';
+import {
+  captureScreen,
+  captureActiveWindow,
+  analyzeScreenshot,
+  verifyUIElement,
+  listScreenshots,
+  deleteScreenshot,
+  getLatestScreenshot,
+  CaptureOptions,
+} from '../services/screenshot';
 
 // System prompt for Claude Code
 function getSystemPrompt(): string {
@@ -272,25 +327,94 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return executor.runClaude(prompt, getSystemPrompt());
   });
 
-  // Mayor handlers
+  // Controller (Phat Controller) handlers
+  ipcMain.handle('controller:getState', () => {
+    return getControllerState();
+  });
+
+  ipcMain.handle('controller:activate', async () => {
+    return activateController();
+  });
+
+  ipcMain.handle('controller:deactivate', async () => {
+    return deactivateController();
+  });
+
+  ipcMain.handle('controller:pause', async () => {
+    return pauseController();
+  });
+
+  ipcMain.handle('controller:resume', async () => {
+    return resumeController();
+  });
+
+  ipcMain.handle('controller:getApprovalQueue', () => {
+    return getApprovalQueue();
+  });
+
+  ipcMain.handle('controller:approveRequest', async (_, id: string) => {
+    return approveRequest(id);
+  });
+
+  ipcMain.handle('controller:rejectRequest', async (_, id: string, reason?: string) => {
+    return rejectRequest(id, reason);
+  });
+
+  ipcMain.handle('controller:getActionLogs', (_, limit?: number) => {
+    return getActionLogs(limit);
+  });
+
+  ipcMain.handle('controller:setProgress', (_, phase: string, step: number, totalSteps: number, description: string) => {
+    return setProgress(phase as 'planning' | 'executing' | 'reviewing' | 'idle', step, totalSteps, description);
+  });
+
+  ipcMain.handle('controller:clearProgress', () => {
+    return clearProgress();
+  });
+
+  ipcMain.handle('controller:updateTokenUsage', (_, input: number, output: number) => {
+    return updateTokenUsage(input, output);
+  });
+
+  ipcMain.handle('controller:resetTokenUsage', () => {
+    return resetTokenUsage();
+  });
+
+  ipcMain.handle('controller:setConversationSession', (_, sessionId: string | null) => {
+    return setConversationSession(sessionId);
+  });
+
+  ipcMain.handle('controller:getUsageLimitConfig', () => {
+    return getUsageLimitConfig();
+  });
+
+  ipcMain.handle('controller:updateUsageLimitConfig', (_, config: Partial<{ maxTokensPerHour: number; maxTokensPerDay: number; pauseThreshold: number; warningThreshold: number; autoResumeOnReset: boolean }>) => {
+    return updateUsageLimitConfig(config);
+  });
+
+  ipcMain.handle('controller:getUsagePercentages', () => {
+    return getUsagePercentages();
+  });
+
+  // Backwards compatibility: Mayor aliases for controller
   ipcMain.handle('mayor:getState', () => {
-    return getMayorState();
+    return getControllerState();
   });
 
   ipcMain.handle('mayor:activate', async () => {
-    return activateMayor();
+    return activateController();
   });
 
   ipcMain.handle('mayor:deactivate', async () => {
-    return deactivateMayor();
+    return deactivateController();
   });
 
   ipcMain.handle('mayor:pause', async () => {
-    return pauseMayor();
+    return pauseController();
   });
 
   ipcMain.handle('mayor:resume', async () => {
-    return resumeMayor();
+    return resumeController();
   });
 
   ipcMain.handle('mayor:getApprovalQueue', () => {
@@ -307,5 +431,151 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('mayor:getActionLogs', (_, limit?: number) => {
     return getActionLogs(limit);
+  });
+
+  // Conversation handlers
+  ipcMain.handle('conversations:create', (_, projectId: string, projectName: string) => {
+    return createConversationSession(projectId, projectName);
+  });
+
+  ipcMain.handle('conversations:append', (_, sessionId: string, entry: { role: 'user' | 'assistant' | 'system'; content: string; projectId?: string; taskId?: string; tokens?: { input: number; output: number } }) => {
+    return appendConversationEntry(sessionId, entry);
+  });
+
+  ipcMain.handle('conversations:load', (_, sessionId: string, options?: { limit?: number; offset?: number }) => {
+    return loadConversation(sessionId, options);
+  });
+
+  ipcMain.handle('conversations:list', (_, projectId?: string) => {
+    return listConversationSessions(projectId);
+  });
+
+  ipcMain.handle('conversations:get', (_, sessionId: string) => {
+    return getConversationSession(sessionId);
+  });
+
+  ipcMain.handle('conversations:update', (_, sessionId: string, updates: { summary?: string; projectName?: string }) => {
+    return updateConversationSession(sessionId, updates);
+  });
+
+  ipcMain.handle('conversations:delete', (_, sessionId: string) => {
+    return deleteConversationSession(sessionId);
+  });
+
+  ipcMain.handle('conversations:recent', (_, limit?: number) => {
+    return getRecentConversations(limit);
+  });
+
+  ipcMain.handle('conversations:search', (_, query: string, options?: { projectId?: string; limit?: number }) => {
+    return searchConversations(query, options);
+  });
+
+  ipcMain.handle('conversations:stats', () => {
+    return getConversationStats();
+  });
+
+  // ntfy notification handlers
+  ipcMain.handle('ntfy:getConfig', () => {
+    return getNtfyConfig();
+  });
+
+  ipcMain.handle('ntfy:setConfig', (_, config: Partial<NtfyConfig>) => {
+    return setNtfyConfig(config);
+  });
+
+  ipcMain.handle('ntfy:sendNotification', async (_, title: string, message: string, options?: { priority?: 'min' | 'low' | 'default' | 'high' | 'urgent'; tags?: string[] }) => {
+    return sendNotification(title, message, options);
+  });
+
+  ipcMain.handle('ntfy:getPendingQuestions', () => {
+    return getPendingQuestions();
+  });
+
+  ipcMain.handle('ntfy:askQuestion', async (_, question: string, taskId: string, taskTitle: string, options?: { choices?: string[]; freeText?: boolean; timeoutMinutes?: number }) => {
+    return askQuestion(question, taskId, taskTitle, options);
+  });
+
+  ipcMain.handle('ntfy:answerQuestion', (_, id: string, answer: string) => {
+    return answerQuestion(id, answer);
+  });
+
+  ipcMain.handle('ntfy:startPolling', () => {
+    return startPolling();
+  });
+
+  ipcMain.handle('ntfy:stopPolling', () => {
+    return stopPolling();
+  });
+
+  ipcMain.handle('ntfy:testConnection', async () => {
+    return testNtfyConnection();
+  });
+
+  // Project Briefs handlers
+  ipcMain.handle('briefs:generate', async (_, projectId: string, projectPath: string, projectName: string) => {
+    return generateProjectBrief(projectId, projectPath, projectName);
+  });
+
+  ipcMain.handle('briefs:get', (_, projectId: string) => {
+    return getProjectBrief(projectId);
+  });
+
+  ipcMain.handle('briefs:delete', (_, projectId: string) => {
+    return deleteProjectBrief(projectId);
+  });
+
+  ipcMain.handle('briefs:list', () => {
+    return listProjectBriefs();
+  });
+
+  // Deep Dive Plan handlers
+  ipcMain.handle('deepdive:generate', async (_, projectId: string, projectPath: string, projectName: string, focus?: string) => {
+    return generateDeepDivePlan(projectId, projectPath, projectName, focus);
+  });
+
+  ipcMain.handle('deepdive:get', (_, projectId: string) => {
+    return getDeepDivePlan(projectId);
+  });
+
+  ipcMain.handle('deepdive:update', (_, projectId: string, updates: { status?: 'draft' | 'approved' | 'in_progress' | 'completed'; taskUpdates?: Array<{ taskId: string; status: 'pending' | 'in_progress' | 'completed' }> }) => {
+    return updateDeepDivePlan(projectId, updates);
+  });
+
+  ipcMain.handle('deepdive:delete', (_, projectId: string) => {
+    return deleteDeepDivePlan(projectId);
+  });
+
+  // New Project handlers
+  ipcMain.handle('project:scaffold', async (_, targetPath: string, spec: NewProjectSpec) => {
+    return scaffoldNewProject(targetPath, spec);
+  });
+
+  // Screenshot handlers
+  ipcMain.handle('screenshot:capture', async (_, options?: CaptureOptions) => {
+    return captureScreen(options);
+  });
+
+  ipcMain.handle('screenshot:captureActiveWindow', async () => {
+    return captureActiveWindow();
+  });
+
+  ipcMain.handle('screenshot:analyze', async (_, screenshotPath: string, prompt: string) => {
+    return analyzeScreenshot(screenshotPath, prompt);
+  });
+
+  ipcMain.handle('screenshot:verify', async (_, description: string, screenshotPath?: string) => {
+    return verifyUIElement(description, screenshotPath);
+  });
+
+  ipcMain.handle('screenshot:list', () => {
+    return listScreenshots();
+  });
+
+  ipcMain.handle('screenshot:delete', (_, filePath: string) => {
+    return deleteScreenshot(filePath);
+  });
+
+  ipcMain.handle('screenshot:getLatest', () => {
+    return getLatestScreenshot();
   });
 }

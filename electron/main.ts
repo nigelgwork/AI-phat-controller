@@ -4,7 +4,9 @@ import { getExecutor } from './services/executor';
 import { settings, initSettings } from './services/settings';
 import { registerIpcHandlers } from './ipc/handlers';
 import { initAutoUpdater, checkForUpdates } from './services/auto-updater';
-import { initMayorStore } from './services/mayor';
+import { initControllerStore, getControllerState, pauseController, resumeController } from './services/controller';
+import { initNtfyStore, startPolling as startNtfyPolling, stopPolling as stopNtfyPolling, getNtfyConfig } from './services/ntfy';
+import { initBriefsStore } from './services/project-briefs';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -72,27 +74,42 @@ function createWindow() {
   });
 }
 
-function createTray() {
-  // Create tray icon
-  const iconPath = path.join(__dirname, '../resources/icon.ico');
-  let trayIcon: Electron.NativeImage;
+function updateTrayMenu() {
+  if (!tray) return;
 
-  try {
-    trayIcon = nativeImage.createFromPath(iconPath);
-  } catch {
-    trayIcon = nativeImage.createEmpty();
-  }
-
-  tray = new Tray(trayIcon);
+  const controllerState = getControllerState();
+  const statusLabel = controllerState.status === 'idle' ? 'Idle' :
+    controllerState.status === 'running' ? 'Running' :
+    controllerState.status === 'paused' ? 'Paused' :
+    controllerState.status === 'waiting_approval' ? 'Waiting Approval' :
+    'Waiting Input';
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show AI Controller',
+      label: 'Show Phat Controller',
       click: () => {
         mainWindow?.show();
         mainWindow?.focus();
       },
     },
+    { type: 'separator' },
+    {
+      label: `Status: ${statusLabel}`,
+      enabled: false,
+    },
+    {
+      label: controllerState.status === 'paused' ? 'Resume' : 'Pause',
+      enabled: controllerState.status === 'running' || controllerState.status === 'paused',
+      click: async () => {
+        if (controllerState.status === 'paused') {
+          await resumeController();
+        } else {
+          await pauseController();
+        }
+        updateTrayMenu();
+      },
+    },
+    { type: 'separator' },
     {
       label: 'Mode',
       submenu: [
@@ -120,18 +137,39 @@ function createTray() {
       label: 'Quit',
       click: () => {
         isQuitting = true;
+        stopNtfyPolling();
         app.quit();
       },
     },
   ]);
 
-  tray.setToolTip('AI Controller');
   tray.setContextMenu(contextMenu);
+
+  // Update tooltip with status
+  tray.setToolTip(`Phat Controller - ${statusLabel}`);
+}
+
+function createTray() {
+  // Create tray icon
+  const iconPath = path.join(__dirname, '../resources/icon.ico');
+  let trayIcon: Electron.NativeImage;
+
+  try {
+    trayIcon = nativeImage.createFromPath(iconPath);
+  } catch {
+    trayIcon = nativeImage.createEmpty();
+  }
+
+  tray = new Tray(trayIcon);
+  updateTrayMenu();
 
   tray.on('click', () => {
     mainWindow?.show();
     mainWindow?.focus();
   });
+
+  // Update tray menu periodically
+  setInterval(updateTrayMenu, 5000);
 }
 
 // Track quitting state
@@ -155,8 +193,20 @@ if (!gotTheLock) {
     // Initialize settings
     initSettings();
 
-    // Initialize Mayor store
-    initMayorStore();
+    // Initialize Controller store
+    initControllerStore();
+
+    // Initialize ntfy store
+    initNtfyStore();
+
+    // Initialize project briefs store
+    initBriefsStore();
+
+    // Start ntfy polling if enabled
+    const ntfyConfig = getNtfyConfig();
+    if (ntfyConfig.enabled) {
+      startNtfyPolling();
+    }
 
     // Initialize executor based on settings
     await getExecutor();

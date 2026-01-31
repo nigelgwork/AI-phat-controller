@@ -2,9 +2,9 @@ import { Routes, Route } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
-import Mayor from './pages/Mayor';
-import Terminal from './pages/Terminal';
+import Controller from './pages/Controller';
 import Projects from './pages/Projects';
+import NewProject from './pages/NewProject';
 import Sessions from './pages/Sessions';
 import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
@@ -42,9 +42,9 @@ function App() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
-        <Route path="mayor" element={<Mayor />} />
-        <Route path="terminal" element={<Terminal />} />
+        <Route path="controller" element={<Controller />} />
         <Route path="projects" element={<Projects />} />
+        <Route path="projects/new" element={<NewProject />} />
         <Route path="sessions" element={<Sessions />} />
         <Route path="agents" element={<Agents />} />
         <Route path="tasks" element={<Tasks />} />

@@ -1,4 +1,4 @@
-import type { Bead, AppSettings, ExecutionMode, Task, CreateTaskInput, UpdateTaskInput, TasksStats, MayorState, ApprovalRequest, ActionLog } from './gastown';
+import type { Bead, AppSettings, ExecutionMode, Task, CreateTaskInput, UpdateTaskInput, TasksStats, ControllerState, ControllerPhase, ProgressState, TokenUsage, UsageLimitConfig, UsageLimitStatus, ApprovalRequest, ActionLog, ConversationEntry, ConversationSession, NtfyConfig, PendingQuestion, ProjectBrief, DeepDivePlan, NewProjectSpec, CaptureOptions, ScreenshotResult, ScreenAnalysis, UIVerificationResult } from './gastown';
 
 export interface ModeStatusResult {
   current: ExecutionMode;
@@ -170,16 +170,43 @@ interface ElectronAPI {
   getTasksStats: () => Promise<TasksStats>;
   sendTaskToClaude: (id: string) => Promise<ExecuteResult>;
 
-  // Mayor (AI Project Manager)
-  getMayorState: () => Promise<MayorState>;
-  activateMayor: () => Promise<void>;
-  deactivateMayor: () => Promise<void>;
-  pauseMayor: () => Promise<void>;
-  resumeMayor: () => Promise<void>;
+  // Controller (Phat Controller - AI Project Manager)
+  getControllerState: () => Promise<ControllerState>;
+  activateController: () => Promise<void>;
+  deactivateController: () => Promise<void>;
+  pauseController: () => Promise<void>;
+  resumeController: () => Promise<void>;
   getApprovalQueue: () => Promise<ApprovalRequest[]>;
   approveRequest: (id: string) => Promise<void>;
   rejectRequest: (id: string, reason?: string) => Promise<void>;
   getActionLogs: (limit?: number) => Promise<ActionLog[]>;
+  setControllerProgress: (phase: ControllerPhase, step: number, totalSteps: number, description: string) => Promise<void>;
+  clearControllerProgress: () => Promise<void>;
+  updateTokenUsage: (input: number, output: number) => Promise<void>;
+  resetTokenUsage: () => Promise<void>;
+  setConversationSession: (sessionId: string | null) => Promise<void>;
+  getUsageLimitConfig: () => Promise<UsageLimitConfig>;
+  updateUsageLimitConfig: (config: Partial<UsageLimitConfig>) => Promise<void>;
+  getUsagePercentages: () => Promise<{ hourly: number; daily: number }>;
+
+  // Backwards compatibility: Mayor aliases
+  getMayorState: () => Promise<ControllerState>;
+  activateMayor: () => Promise<void>;
+  deactivateMayor: () => Promise<void>;
+  pauseMayor: () => Promise<void>;
+  resumeMayor: () => Promise<void>;
+
+  // Conversations
+  createConversationSession: (projectId: string, projectName: string) => Promise<ConversationSession>;
+  appendConversationEntry: (sessionId: string, entry: { role: 'user' | 'assistant' | 'system'; content: string; projectId?: string; taskId?: string; tokens?: { input: number; output: number } }) => Promise<ConversationEntry>;
+  loadConversation: (sessionId: string, options?: { limit?: number; offset?: number }) => Promise<ConversationEntry[]>;
+  listConversationSessions: (projectId?: string) => Promise<ConversationSession[]>;
+  getConversationSession: (sessionId: string) => Promise<ConversationSession | null>;
+  updateConversationSession: (sessionId: string, updates: { summary?: string; projectName?: string }) => Promise<ConversationSession | null>;
+  deleteConversationSession: (sessionId: string) => Promise<boolean>;
+  getRecentConversations: (limit?: number) => Promise<ConversationSession[]>;
+  searchConversations: (query: string, options?: { projectId?: string; limit?: number }) => Promise<Array<{ session: ConversationSession; entry: ConversationEntry; match: string }>>;
+  getConversationStats: () => Promise<{ totalSessions: number; totalEntries: number; totalTokens: { input: number; output: number }; sessionsByProject: Record<string, number> }>;
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;
@@ -192,10 +219,54 @@ interface ElectronAPI {
   // Mode event listeners
   onModeChanged: (callback: (mode: ExecutionMode) => void) => () => void;
 
-  // Mayor event listeners
-  onMayorStateChanged: (callback: (state: MayorState) => void) => () => void;
+  // Controller event listeners
+  onControllerStateChanged: (callback: (state: ControllerState) => void) => () => void;
   onApprovalRequired: (callback: (request: ApprovalRequest) => void) => () => void;
   onActionCompleted: (callback: (log: ActionLog) => void) => () => void;
+  onProgressUpdated: (callback: (progress: ProgressState | null) => void) => () => void;
+  onUsageWarning: (callback: (data: { status: UsageLimitStatus; percentage: number }) => void) => () => void;
+
+  // Backwards compatibility: Mayor event listeners
+  onMayorStateChanged: (callback: (state: ControllerState) => void) => () => void;
+
+  // ntfy notifications
+  getNtfyConfig: () => Promise<NtfyConfig>;
+  setNtfyConfig: (config: Partial<NtfyConfig>) => Promise<NtfyConfig>;
+  sendNtfyNotification: (title: string, message: string, options?: { priority?: 'min' | 'low' | 'default' | 'high' | 'urgent'; tags?: string[] }) => Promise<boolean>;
+  getPendingQuestions: () => Promise<PendingQuestion[]>;
+  askNtfyQuestion: (question: string, taskId: string, taskTitle: string, options?: { choices?: string[]; freeText?: boolean; timeoutMinutes?: number }) => Promise<PendingQuestion>;
+  answerNtfyQuestion: (id: string, answer: string) => Promise<PendingQuestion | null>;
+  startNtfyPolling: () => Promise<void>;
+  stopNtfyPolling: () => Promise<void>;
+  testNtfyConnection: () => Promise<{ success: boolean; error?: string }>;
+
+  // ntfy event listeners
+  onNtfyQuestionAsked: (callback: (question: PendingQuestion) => void) => () => void;
+  onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
+
+  // Project Briefs
+  generateProjectBrief: (projectId: string, projectPath: string, projectName: string) => Promise<ProjectBrief>;
+  getProjectBrief: (projectId: string) => Promise<ProjectBrief | null>;
+  deleteProjectBrief: (projectId: string) => Promise<boolean>;
+  listProjectBriefs: () => Promise<ProjectBrief[]>;
+
+  // Deep Dive Plans
+  generateDeepDivePlan: (projectId: string, projectPath: string, projectName: string, focus?: string) => Promise<DeepDivePlan>;
+  getDeepDivePlan: (projectId: string) => Promise<DeepDivePlan | null>;
+  updateDeepDivePlan: (projectId: string, updates: { status?: 'draft' | 'approved' | 'in_progress' | 'completed'; taskUpdates?: Array<{ taskId: string; status: 'pending' | 'in_progress' | 'completed' }> }) => Promise<DeepDivePlan | null>;
+  deleteDeepDivePlan: (projectId: string) => Promise<boolean>;
+
+  // New Project
+  scaffoldNewProject: (targetPath: string, spec: NewProjectSpec) => Promise<{ success: boolean; error?: string }>;
+
+  // Screenshot capture and analysis
+  captureScreen: (options?: CaptureOptions) => Promise<ScreenshotResult>;
+  captureActiveWindow: () => Promise<ScreenshotResult>;
+  analyzeScreenshot: (screenshotPath: string, prompt: string) => Promise<ScreenAnalysis>;
+  verifyUIElement: (description: string, screenshotPath?: string) => Promise<UIVerificationResult>;
+  listScreenshots: () => Promise<string[]>;
+  deleteScreenshot: (filePath: string) => Promise<boolean>;
+  getLatestScreenshot: () => Promise<string | null>;
 }
 
 declare global {

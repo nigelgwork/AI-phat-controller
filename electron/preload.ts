@@ -154,12 +154,38 @@ export interface AppSettings {
   hasCompletedSetup: boolean;
 }
 
-// Mayor types
-export type MayorStatus = 'idle' | 'running' | 'paused' | 'waiting_approval';
+// Controller (Phat Controller) types
+export type ControllerStatus = 'idle' | 'running' | 'paused' | 'waiting_approval' | 'waiting_input';
+export type ControllerPhase = 'planning' | 'executing' | 'reviewing' | 'idle';
 export type ApprovalActionType = 'planning' | 'architecture' | 'git_push' | 'large_edit';
 
-export interface MayorState {
-  status: MayorStatus;
+export interface ProgressState {
+  phase: ControllerPhase;
+  step: number;
+  totalSteps: number;
+  stepDescription: string;
+  startedAt: string;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  limit: number;
+  resetAt: string;
+}
+
+export interface UsageLimitConfig {
+  maxTokensPerHour: number;
+  maxTokensPerDay: number;
+  pauseThreshold: number;
+  warningThreshold: number;
+  autoResumeOnReset: boolean;
+}
+
+export type UsageLimitStatus = 'ok' | 'warning' | 'approaching_limit' | 'at_limit';
+
+export interface ControllerState {
+  status: ControllerStatus;
   currentTaskId: string | null;
   currentAction: string | null;
   startedAt: string | null;
@@ -167,6 +193,13 @@ export interface MayorState {
   approvedCount: number;
   rejectedCount: number;
   errorCount: number;
+  currentProgress: ProgressState | null;
+  conversationSessionId: string | null;
+  tokenUsage: TokenUsage;
+  usageLimitConfig: UsageLimitConfig;
+  dailyTokenUsage: { input: number; output: number; date: string };
+  usageLimitStatus: UsageLimitStatus;
+  pausedDueToLimit: boolean;
 }
 
 export interface ApprovalRequest {
@@ -191,6 +224,84 @@ export interface ActionLog {
   output?: string;
   duration: number;
   timestamp: string;
+}
+
+// Conversation types
+export interface ConversationEntry {
+  id: string;
+  timestamp: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  projectId?: string;
+  taskId?: string;
+  tokens?: { input: number; output: number };
+}
+
+export interface ConversationSession {
+  id: string;
+  projectId: string;
+  projectName: string;
+  startedAt: string;
+  lastActivityAt: string;
+  entryCount: number;
+  totalTokens: { input: number; output: number };
+  summary?: string;
+}
+
+// Backwards compatibility
+export type MayorStatus = ControllerStatus;
+export type MayorState = ControllerState;
+
+// ntfy notification types
+export interface NtfyConfig {
+  enabled: boolean;
+  serverUrl: string;
+  topic: string;
+  responseTopic?: string;
+  priority: 'min' | 'low' | 'default' | 'high' | 'urgent';
+  authToken?: string;
+  enableDesktopNotifications: boolean;
+}
+
+export interface PendingQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  freeText: boolean;
+  taskId: string;
+  taskTitle: string;
+  status: 'pending' | 'answered' | 'expired';
+  answer?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+// Screenshot types
+export interface CaptureOptions {
+  display?: number;
+  region?: { x: number; y: number; width: number; height: number };
+}
+
+export interface ScreenshotResult {
+  success: boolean;
+  filePath?: string;
+  base64?: string;
+  width?: number;
+  height?: number;
+  error?: string;
+}
+
+export interface ScreenAnalysis {
+  success: boolean;
+  analysis?: string;
+  error?: string;
+}
+
+export interface UIVerificationResult {
+  found: boolean;
+  confidence: string;
+  details: string;
+  error?: string;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -270,16 +381,108 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTasksStats: (): Promise<TasksStats> => ipcRenderer.invoke('tasks:stats'),
   sendTaskToClaude: (id: string): Promise<ExecuteResult> => ipcRenderer.invoke('tasks:sendToClaude', id),
 
-  // Mayor (AI Project Manager)
-  getMayorState: (): Promise<MayorState> => ipcRenderer.invoke('mayor:getState'),
+  // Controller (Phat Controller - AI Project Manager)
+  getControllerState: (): Promise<ControllerState> => ipcRenderer.invoke('controller:getState'),
+  activateController: (): Promise<void> => ipcRenderer.invoke('controller:activate'),
+  deactivateController: (): Promise<void> => ipcRenderer.invoke('controller:deactivate'),
+  pauseController: (): Promise<void> => ipcRenderer.invoke('controller:pause'),
+  resumeController: (): Promise<void> => ipcRenderer.invoke('controller:resume'),
+  getApprovalQueue: (): Promise<ApprovalRequest[]> => ipcRenderer.invoke('controller:getApprovalQueue'),
+  approveRequest: (id: string): Promise<void> => ipcRenderer.invoke('controller:approveRequest', id),
+  rejectRequest: (id: string, reason?: string): Promise<void> => ipcRenderer.invoke('controller:rejectRequest', id, reason),
+  getActionLogs: (limit?: number): Promise<ActionLog[]> => ipcRenderer.invoke('controller:getActionLogs', limit),
+  setControllerProgress: (phase: string, step: number, totalSteps: number, description: string): Promise<void> =>
+    ipcRenderer.invoke('controller:setProgress', phase, step, totalSteps, description),
+  clearControllerProgress: (): Promise<void> => ipcRenderer.invoke('controller:clearProgress'),
+  updateTokenUsage: (input: number, output: number): Promise<void> => ipcRenderer.invoke('controller:updateTokenUsage', input, output),
+  resetTokenUsage: (): Promise<void> => ipcRenderer.invoke('controller:resetTokenUsage'),
+  setConversationSession: (sessionId: string | null): Promise<void> => ipcRenderer.invoke('controller:setConversationSession', sessionId),
+  getUsageLimitConfig: (): Promise<UsageLimitConfig> => ipcRenderer.invoke('controller:getUsageLimitConfig'),
+  updateUsageLimitConfig: (config: Partial<UsageLimitConfig>): Promise<void> => ipcRenderer.invoke('controller:updateUsageLimitConfig', config),
+  getUsagePercentages: (): Promise<{ hourly: number; daily: number }> => ipcRenderer.invoke('controller:getUsagePercentages'),
+
+  // Backwards compatibility aliases for Mayor
+  getMayorState: (): Promise<ControllerState> => ipcRenderer.invoke('mayor:getState'),
   activateMayor: (): Promise<void> => ipcRenderer.invoke('mayor:activate'),
   deactivateMayor: (): Promise<void> => ipcRenderer.invoke('mayor:deactivate'),
   pauseMayor: (): Promise<void> => ipcRenderer.invoke('mayor:pause'),
   resumeMayor: (): Promise<void> => ipcRenderer.invoke('mayor:resume'),
-  getApprovalQueue: (): Promise<ApprovalRequest[]> => ipcRenderer.invoke('mayor:getApprovalQueue'),
-  approveRequest: (id: string): Promise<void> => ipcRenderer.invoke('mayor:approveRequest', id),
-  rejectRequest: (id: string, reason?: string): Promise<void> => ipcRenderer.invoke('mayor:rejectRequest', id, reason),
-  getActionLogs: (limit?: number): Promise<ActionLog[]> => ipcRenderer.invoke('mayor:getActionLogs', limit),
+
+  // Conversations
+  createConversationSession: (projectId: string, projectName: string): Promise<ConversationSession> =>
+    ipcRenderer.invoke('conversations:create', projectId, projectName),
+  appendConversationEntry: (sessionId: string, entry: { role: 'user' | 'assistant' | 'system'; content: string; projectId?: string; taskId?: string; tokens?: { input: number; output: number } }): Promise<ConversationEntry> =>
+    ipcRenderer.invoke('conversations:append', sessionId, entry),
+  loadConversation: (sessionId: string, options?: { limit?: number; offset?: number }): Promise<ConversationEntry[]> =>
+    ipcRenderer.invoke('conversations:load', sessionId, options),
+  listConversationSessions: (projectId?: string): Promise<ConversationSession[]> =>
+    ipcRenderer.invoke('conversations:list', projectId),
+  getConversationSession: (sessionId: string): Promise<ConversationSession | null> =>
+    ipcRenderer.invoke('conversations:get', sessionId),
+  updateConversationSession: (sessionId: string, updates: { summary?: string; projectName?: string }): Promise<ConversationSession | null> =>
+    ipcRenderer.invoke('conversations:update', sessionId, updates),
+  deleteConversationSession: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('conversations:delete', sessionId),
+  getRecentConversations: (limit?: number): Promise<ConversationSession[]> =>
+    ipcRenderer.invoke('conversations:recent', limit),
+  searchConversations: (query: string, options?: { projectId?: string; limit?: number }): Promise<Array<{ session: ConversationSession; entry: ConversationEntry; match: string }>> =>
+    ipcRenderer.invoke('conversations:search', query, options),
+  getConversationStats: (): Promise<{ totalSessions: number; totalEntries: number; totalTokens: { input: number; output: number }; sessionsByProject: Record<string, number> }> =>
+    ipcRenderer.invoke('conversations:stats'),
+
+  // ntfy notifications
+  getNtfyConfig: (): Promise<NtfyConfig> => ipcRenderer.invoke('ntfy:getConfig'),
+  setNtfyConfig: (config: Partial<NtfyConfig>): Promise<NtfyConfig> => ipcRenderer.invoke('ntfy:setConfig', config),
+  sendNtfyNotification: (title: string, message: string, options?: { priority?: 'min' | 'low' | 'default' | 'high' | 'urgent'; tags?: string[] }): Promise<boolean> =>
+    ipcRenderer.invoke('ntfy:sendNotification', title, message, options),
+  getPendingQuestions: (): Promise<PendingQuestion[]> => ipcRenderer.invoke('ntfy:getPendingQuestions'),
+  askNtfyQuestion: (question: string, taskId: string, taskTitle: string, options?: { choices?: string[]; freeText?: boolean; timeoutMinutes?: number }): Promise<PendingQuestion> =>
+    ipcRenderer.invoke('ntfy:askQuestion', question, taskId, taskTitle, options),
+  answerNtfyQuestion: (id: string, answer: string): Promise<PendingQuestion | null> =>
+    ipcRenderer.invoke('ntfy:answerQuestion', id, answer),
+  startNtfyPolling: (): Promise<void> => ipcRenderer.invoke('ntfy:startPolling'),
+  stopNtfyPolling: (): Promise<void> => ipcRenderer.invoke('ntfy:stopPolling'),
+  testNtfyConnection: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('ntfy:testConnection'),
+
+  // Project Briefs
+  generateProjectBrief: (projectId: string, projectPath: string, projectName: string): Promise<unknown> =>
+    ipcRenderer.invoke('briefs:generate', projectId, projectPath, projectName),
+  getProjectBrief: (projectId: string): Promise<unknown> =>
+    ipcRenderer.invoke('briefs:get', projectId),
+  deleteProjectBrief: (projectId: string): Promise<boolean> =>
+    ipcRenderer.invoke('briefs:delete', projectId),
+  listProjectBriefs: (): Promise<unknown[]> =>
+    ipcRenderer.invoke('briefs:list'),
+
+  // Deep Dive Plans
+  generateDeepDivePlan: (projectId: string, projectPath: string, projectName: string, focus?: string): Promise<unknown> =>
+    ipcRenderer.invoke('deepdive:generate', projectId, projectPath, projectName, focus),
+  getDeepDivePlan: (projectId: string): Promise<unknown> =>
+    ipcRenderer.invoke('deepdive:get', projectId),
+  updateDeepDivePlan: (projectId: string, updates: { status?: string; taskUpdates?: Array<{ taskId: string; status: string }> }): Promise<unknown> =>
+    ipcRenderer.invoke('deepdive:update', projectId, updates),
+  deleteDeepDivePlan: (projectId: string): Promise<boolean> =>
+    ipcRenderer.invoke('deepdive:delete', projectId),
+
+  // New Project
+  scaffoldNewProject: (targetPath: string, spec: { name: string; description: string; type: string; techStack: string[]; features: string[] }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('project:scaffold', targetPath, spec),
+
+  // Screenshot capture and analysis
+  captureScreen: (options?: CaptureOptions): Promise<ScreenshotResult> =>
+    ipcRenderer.invoke('screenshot:capture', options),
+  captureActiveWindow: (): Promise<ScreenshotResult> =>
+    ipcRenderer.invoke('screenshot:captureActiveWindow'),
+  analyzeScreenshot: (screenshotPath: string, prompt: string): Promise<ScreenAnalysis> =>
+    ipcRenderer.invoke('screenshot:analyze', screenshotPath, prompt),
+  verifyUIElement: (description: string, screenshotPath?: string): Promise<UIVerificationResult> =>
+    ipcRenderer.invoke('screenshot:verify', description, screenshotPath),
+  listScreenshots: (): Promise<string[]> =>
+    ipcRenderer.invoke('screenshot:list'),
+  deleteScreenshot: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('screenshot:delete', filePath),
+  getLatestScreenshot: (): Promise<string | null> =>
+    ipcRenderer.invoke('screenshot:getLatest'),
 
   // Event listeners
   onUpdateChecking: (callback: () => void) => {
@@ -318,21 +521,51 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('mode-changed', handler);
   },
 
-  // Mayor event listeners
-  onMayorStateChanged: (callback: (state: MayorState) => void) => {
-    const handler = (_: unknown, state: MayorState) => callback(state);
-    ipcRenderer.on('mayor:stateChanged', handler);
-    return () => ipcRenderer.removeListener('mayor:stateChanged', handler);
+  // Controller event listeners
+  onControllerStateChanged: (callback: (state: ControllerState) => void) => {
+    const handler = (_: unknown, state: ControllerState) => callback(state);
+    ipcRenderer.on('controller:stateChanged', handler);
+    return () => ipcRenderer.removeListener('controller:stateChanged', handler);
   },
   onApprovalRequired: (callback: (request: ApprovalRequest) => void) => {
     const handler = (_: unknown, request: ApprovalRequest) => callback(request);
-    ipcRenderer.on('mayor:approvalRequired', handler);
-    return () => ipcRenderer.removeListener('mayor:approvalRequired', handler);
+    ipcRenderer.on('controller:approvalRequired', handler);
+    return () => ipcRenderer.removeListener('controller:approvalRequired', handler);
   },
   onActionCompleted: (callback: (log: ActionLog) => void) => {
     const handler = (_: unknown, log: ActionLog) => callback(log);
-    ipcRenderer.on('mayor:actionCompleted', handler);
-    return () => ipcRenderer.removeListener('mayor:actionCompleted', handler);
+    ipcRenderer.on('controller:actionCompleted', handler);
+    return () => ipcRenderer.removeListener('controller:actionCompleted', handler);
+  },
+  onProgressUpdated: (callback: (progress: ProgressState | null) => void) => {
+    const handler = (_: unknown, progress: ProgressState | null) => callback(progress);
+    ipcRenderer.on('controller:progressUpdated', handler);
+    return () => ipcRenderer.removeListener('controller:progressUpdated', handler);
+  },
+
+  onUsageWarning: (callback: (data: { status: UsageLimitStatus; percentage: number }) => void) => {
+    const handler = (_: unknown, data: { status: UsageLimitStatus; percentage: number }) => callback(data);
+    ipcRenderer.on('controller:usageWarning', handler);
+    return () => ipcRenderer.removeListener('controller:usageWarning', handler);
+  },
+
+  // Backwards compatibility: Mayor event listeners
+  onMayorStateChanged: (callback: (state: ControllerState) => void) => {
+    const handler = (_: unknown, state: ControllerState) => callback(state);
+    ipcRenderer.on('controller:stateChanged', handler);
+    return () => ipcRenderer.removeListener('controller:stateChanged', handler);
+  },
+
+  // ntfy event listeners
+  onNtfyQuestionAsked: (callback: (question: PendingQuestion) => void) => {
+    const handler = (_: unknown, question: PendingQuestion) => callback(question);
+    ipcRenderer.on('ntfy:questionAsked', handler);
+    return () => ipcRenderer.removeListener('ntfy:questionAsked', handler);
+  },
+  onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => {
+    const handler = (_: unknown, question: PendingQuestion) => callback(question);
+    ipcRenderer.on('ntfy:questionAnswered', handler);
+    return () => ipcRenderer.removeListener('ntfy:questionAnswered', handler);
   },
 });
 
@@ -397,20 +630,82 @@ declare global {
       deleteTask: (id: string) => Promise<boolean>;
       getTasksStats: () => Promise<TasksStats>;
       sendTaskToClaude: (id: string) => Promise<ExecuteResult>;
-      // Mayor (AI Project Manager)
-      getMayorState: () => Promise<MayorState>;
-      activateMayor: () => Promise<void>;
-      deactivateMayor: () => Promise<void>;
-      pauseMayor: () => Promise<void>;
-      resumeMayor: () => Promise<void>;
+      // Controller (Phat Controller - AI Project Manager)
+      getControllerState: () => Promise<ControllerState>;
+      activateController: () => Promise<void>;
+      deactivateController: () => Promise<void>;
+      pauseController: () => Promise<void>;
+      resumeController: () => Promise<void>;
       getApprovalQueue: () => Promise<ApprovalRequest[]>;
       approveRequest: (id: string) => Promise<void>;
       rejectRequest: (id: string, reason?: string) => Promise<void>;
       getActionLogs: (limit?: number) => Promise<ActionLog[]>;
-      // Mayor event listeners
-      onMayorStateChanged: (callback: (state: MayorState) => void) => () => void;
+      setControllerProgress: (phase: string, step: number, totalSteps: number, description: string) => Promise<void>;
+      clearControllerProgress: () => Promise<void>;
+      updateTokenUsage: (input: number, output: number) => Promise<void>;
+      resetTokenUsage: () => Promise<void>;
+      setConversationSession: (sessionId: string | null) => Promise<void>;
+      getUsageLimitConfig: () => Promise<UsageLimitConfig>;
+      updateUsageLimitConfig: (config: Partial<UsageLimitConfig>) => Promise<void>;
+      getUsagePercentages: () => Promise<{ hourly: number; daily: number }>;
+      // Backwards compatibility: Mayor aliases
+      getMayorState: () => Promise<ControllerState>;
+      activateMayor: () => Promise<void>;
+      deactivateMayor: () => Promise<void>;
+      pauseMayor: () => Promise<void>;
+      resumeMayor: () => Promise<void>;
+      // Conversations
+      createConversationSession: (projectId: string, projectName: string) => Promise<ConversationSession>;
+      appendConversationEntry: (sessionId: string, entry: { role: 'user' | 'assistant' | 'system'; content: string; projectId?: string; taskId?: string; tokens?: { input: number; output: number } }) => Promise<ConversationEntry>;
+      loadConversation: (sessionId: string, options?: { limit?: number; offset?: number }) => Promise<ConversationEntry[]>;
+      listConversationSessions: (projectId?: string) => Promise<ConversationSession[]>;
+      getConversationSession: (sessionId: string) => Promise<ConversationSession | null>;
+      updateConversationSession: (sessionId: string, updates: { summary?: string; projectName?: string }) => Promise<ConversationSession | null>;
+      deleteConversationSession: (sessionId: string) => Promise<boolean>;
+      getRecentConversations: (limit?: number) => Promise<ConversationSession[]>;
+      searchConversations: (query: string, options?: { projectId?: string; limit?: number }) => Promise<Array<{ session: ConversationSession; entry: ConversationEntry; match: string }>>;
+      getConversationStats: () => Promise<{ totalSessions: number; totalEntries: number; totalTokens: { input: number; output: number }; sessionsByProject: Record<string, number> }>;
+      // ntfy notifications
+      getNtfyConfig: () => Promise<NtfyConfig>;
+      setNtfyConfig: (config: Partial<NtfyConfig>) => Promise<NtfyConfig>;
+      sendNtfyNotification: (title: string, message: string, options?: { priority?: 'min' | 'low' | 'default' | 'high' | 'urgent'; tags?: string[] }) => Promise<boolean>;
+      getPendingQuestions: () => Promise<PendingQuestion[]>;
+      askNtfyQuestion: (question: string, taskId: string, taskTitle: string, options?: { choices?: string[]; freeText?: boolean; timeoutMinutes?: number }) => Promise<PendingQuestion>;
+      answerNtfyQuestion: (id: string, answer: string) => Promise<PendingQuestion | null>;
+      startNtfyPolling: () => Promise<void>;
+      stopNtfyPolling: () => Promise<void>;
+      testNtfyConnection: () => Promise<{ success: boolean; error?: string }>;
+      // Project Briefs
+      generateProjectBrief: (projectId: string, projectPath: string, projectName: string) => Promise<unknown>;
+      getProjectBrief: (projectId: string) => Promise<unknown>;
+      deleteProjectBrief: (projectId: string) => Promise<boolean>;
+      listProjectBriefs: () => Promise<unknown[]>;
+      // Deep Dive Plans
+      generateDeepDivePlan: (projectId: string, projectPath: string, projectName: string, focus?: string) => Promise<unknown>;
+      getDeepDivePlan: (projectId: string) => Promise<unknown>;
+      updateDeepDivePlan: (projectId: string, updates: { status?: string; taskUpdates?: Array<{ taskId: string; status: string }> }) => Promise<unknown>;
+      deleteDeepDivePlan: (projectId: string) => Promise<boolean>;
+      // New Project
+      scaffoldNewProject: (targetPath: string, spec: { name: string; description: string; type: string; techStack: string[]; features: string[] }) => Promise<{ success: boolean; error?: string }>;
+      // Screenshot capture and analysis
+      captureScreen: (options?: CaptureOptions) => Promise<ScreenshotResult>;
+      captureActiveWindow: () => Promise<ScreenshotResult>;
+      analyzeScreenshot: (screenshotPath: string, prompt: string) => Promise<ScreenAnalysis>;
+      verifyUIElement: (description: string, screenshotPath?: string) => Promise<UIVerificationResult>;
+      listScreenshots: () => Promise<string[]>;
+      deleteScreenshot: (filePath: string) => Promise<boolean>;
+      getLatestScreenshot: () => Promise<string | null>;
+      // Controller event listeners
+      onControllerStateChanged: (callback: (state: ControllerState) => void) => () => void;
       onApprovalRequired: (callback: (request: ApprovalRequest) => void) => () => void;
       onActionCompleted: (callback: (log: ActionLog) => void) => () => void;
+      onProgressUpdated: (callback: (progress: ProgressState | null) => void) => () => void;
+      onUsageWarning: (callback: (data: { status: UsageLimitStatus; percentage: number }) => void) => () => void;
+      // Backwards compatibility: Mayor event listeners
+      onMayorStateChanged: (callback: (state: ControllerState) => void) => () => void;
+      // ntfy event listeners
+      onNtfyQuestionAsked: (callback: (question: PendingQuestion) => void) => () => void;
+      onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
     };
   }
 }

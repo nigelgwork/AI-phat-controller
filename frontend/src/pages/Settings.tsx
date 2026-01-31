@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle, Bell, Send, Gauge, AlertTriangle } from 'lucide-react';
+import type { NtfyConfig, UsageLimitConfig } from '../types/gastown';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -185,6 +186,16 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* ntfy Notifications Card - Full Width */}
+        <div className="md:col-span-2">
+          <NtfyCard />
+        </div>
+
+        {/* Usage Limits Card - Full Width */}
+        <div className="md:col-span-2">
+          <UsageLimitsCard />
+        </div>
+
         {/* About Card - Full Width */}
         <div className="md:col-span-2">
           <AboutCard />
@@ -193,6 +204,209 @@ export default function Settings() {
         {/* Debug Info Card - Full Width */}
         <div className="md:col-span-2">
           <DebugCard />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NtfyCard() {
+  const queryClient = useQueryClient();
+  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const { data: config, isLoading } = useQuery({
+    queryKey: ['ntfy-config'],
+    queryFn: () => window.electronAPI?.getNtfyConfig(),
+  });
+
+  const [localConfig, setLocalConfig] = useState<Partial<NtfyConfig>>({});
+
+  useEffect(() => {
+    if (config) {
+      setLocalConfig(config);
+    }
+  }, [config]);
+
+  const saveMutation = useMutation({
+    mutationFn: (updates: Partial<NtfyConfig>) => window.electronAPI!.setNtfyConfig(updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ntfy-config'] });
+    },
+  });
+
+  const handleSave = () => {
+    saveMutation.mutate(localConfig);
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      // First save the config
+      await window.electronAPI?.setNtfyConfig(localConfig);
+      // Then test
+      const result = await window.electronAPI?.testNtfyConnection();
+      setTestResult(result || { success: false, error: 'Unknown error' });
+    } catch (error) {
+      setTestResult({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
+        <div className="text-slate-400">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-pink-500/20 rounded-lg">
+            <Bell size={18} className="text-pink-400" />
+          </div>
+          <h3 className="font-semibold text-white">ntfy Notifications</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleTestConnection}
+            disabled={testing || !localConfig.enabled}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+          >
+            <Send size={14} className={testing ? 'animate-pulse' : ''} />
+            Test
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+            className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Save size={14} />
+            Save
+          </button>
+        </div>
+      </div>
+
+      {testResult && (
+        <div className={`mb-4 p-3 rounded-lg ${testResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+          {testResult.success ? 'Test notification sent successfully!' : `Failed: ${testResult.error}`}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Enable/Disable */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <p className="text-sm text-white">Enable ntfy</p>
+              <p className="text-xs text-slate-400">Send notifications to your phone via ntfy</p>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={localConfig.enabled || false}
+                onChange={(e) => setLocalConfig({ ...localConfig, enabled: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+            </div>
+          </label>
+        </div>
+
+        {/* Desktop Notifications */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <p className="text-sm text-white">Desktop Notifications</p>
+              <p className="text-xs text-slate-400">Show local notifications when ntfy is disabled</p>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={localConfig.enableDesktopNotifications !== false}
+                onChange={(e) => setLocalConfig({ ...localConfig, enableDesktopNotifications: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+            </div>
+          </label>
+        </div>
+
+        {/* Server URL */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Server URL</label>
+          <input
+            type="text"
+            value={localConfig.serverUrl || ''}
+            onChange={(e) => setLocalConfig({ ...localConfig, serverUrl: e.target.value })}
+            placeholder="https://ntfy.sh"
+            disabled={!localConfig.enabled}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+          />
+        </div>
+
+        {/* Topic */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Topic</label>
+          <input
+            type="text"
+            value={localConfig.topic || ''}
+            onChange={(e) => setLocalConfig({ ...localConfig, topic: e.target.value })}
+            placeholder="phat-controller"
+            disabled={!localConfig.enabled}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+          />
+          <p className="text-xs text-slate-500 mt-1">Subscribe to this topic in the ntfy app</p>
+        </div>
+
+        {/* Response Topic */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Response Topic (Optional)</label>
+          <input
+            type="text"
+            value={localConfig.responseTopic || ''}
+            onChange={(e) => setLocalConfig({ ...localConfig, responseTopic: e.target.value })}
+            placeholder="phat-controller-response"
+            disabled={!localConfig.enabled}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+          />
+          <p className="text-xs text-slate-500 mt-1">For interactive Q&A responses</p>
+        </div>
+
+        {/* Priority */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Default Priority</label>
+          <select
+            value={localConfig.priority || 'default'}
+            onChange={(e) => setLocalConfig({ ...localConfig, priority: e.target.value as NtfyConfig['priority'] })}
+            disabled={!localConfig.enabled}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+          >
+            <option value="min">Minimum</option>
+            <option value="low">Low</option>
+            <option value="default">Default</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+
+        {/* Auth Token */}
+        <div className="p-4 bg-slate-900 rounded-lg md:col-span-2">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Auth Token (Optional)</label>
+          <input
+            type="password"
+            value={localConfig.authToken || ''}
+            onChange={(e) => setLocalConfig({ ...localConfig, authToken: e.target.value })}
+            placeholder="For password-protected topics"
+            disabled={!localConfig.enabled}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+          />
+          <p className="text-xs text-slate-500 mt-1">Leave empty for public topics</p>
         </div>
       </div>
     </div>
@@ -426,6 +640,207 @@ function DebugCard() {
       ) : (
         <div className="text-slate-400">Failed to load debug info</div>
       )}
+    </div>
+  );
+}
+
+function UsageLimitsCard() {
+  const queryClient = useQueryClient();
+
+  const { data: config, isLoading } = useQuery({
+    queryKey: ['usage-limit-config'],
+    queryFn: () => window.electronAPI?.getUsageLimitConfig(),
+  });
+
+  const { data: percentages } = useQuery({
+    queryKey: ['usage-percentages'],
+    queryFn: () => window.electronAPI?.getUsagePercentages(),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const [localConfig, setLocalConfig] = useState<Partial<UsageLimitConfig>>({});
+
+  useEffect(() => {
+    if (config) {
+      setLocalConfig(config);
+    }
+  }, [config]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (updates: Partial<UsageLimitConfig>) => {
+      await window.electronAPI?.updateUsageLimitConfig(updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['usage-limit-config'] });
+    },
+  });
+
+  const handleSave = () => {
+    saveMutation.mutate(localConfig);
+  };
+
+  const formatTokens = (tokens: number) => {
+    if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}K`;
+    return tokens.toString();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
+        <div className="animate-pulse">
+          <div className="h-6 bg-slate-700 rounded w-1/3 mb-4"></div>
+          <div className="h-24 bg-slate-700 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-orange-500/20 rounded-lg">
+            <Gauge size={18} className="text-orange-400" />
+          </div>
+          <h3 className="font-semibold text-white">Token Usage Limits</h3>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saveMutation.isPending}
+          className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-600 text-white px-3 py-1.5 rounded text-sm transition-colors"
+        >
+          <Save size={14} />
+          {saveMutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+
+      {/* Current Usage Display */}
+      {percentages && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-400 uppercase">Hourly Usage</span>
+              <span className={`text-sm font-medium ${
+                percentages.hourly >= 80 ? 'text-red-400' :
+                percentages.hourly >= 60 ? 'text-yellow-400' : 'text-green-400'
+              }`}>
+                {percentages.hourly}%
+              </span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  percentages.hourly >= 80 ? 'bg-red-500' :
+                  percentages.hourly >= 60 ? 'bg-yellow-500' : 'bg-green-500'
+                }`}
+                style={{ width: `${Math.min(percentages.hourly, 100)}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-400 uppercase">Daily Usage</span>
+              <span className={`text-sm font-medium ${
+                percentages.daily >= 80 ? 'text-red-400' :
+                percentages.daily >= 60 ? 'text-yellow-400' : 'text-green-400'
+              }`}>
+                {percentages.daily}%
+              </span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  percentages.daily >= 80 ? 'bg-red-500' :
+                  percentages.daily >= 60 ? 'bg-yellow-500' : 'bg-green-500'
+                }`}
+                style={{ width: `${Math.min(percentages.daily, 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Configuration */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Max Tokens Per Hour */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Max Tokens/Hour</label>
+          <input
+            type="number"
+            value={localConfig.maxTokensPerHour || 100000}
+            onChange={(e) => setLocalConfig({ ...localConfig, maxTokensPerHour: parseInt(e.target.value) })}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500"
+          />
+          <p className="text-xs text-slate-500 mt-1">{formatTokens(localConfig.maxTokensPerHour || 100000)}</p>
+        </div>
+
+        {/* Max Tokens Per Day */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Max Tokens/Day</label>
+          <input
+            type="number"
+            value={localConfig.maxTokensPerDay || 500000}
+            onChange={(e) => setLocalConfig({ ...localConfig, maxTokensPerDay: parseInt(e.target.value) })}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500"
+          />
+          <p className="text-xs text-slate-500 mt-1">{formatTokens(localConfig.maxTokensPerDay || 500000)}</p>
+        </div>
+
+        {/* Warning Threshold */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Warning At (%)</label>
+          <input
+            type="number"
+            min={10}
+            max={90}
+            value={Math.round((localConfig.warningThreshold || 0.6) * 100)}
+            onChange={(e) => setLocalConfig({ ...localConfig, warningThreshold: parseInt(e.target.value) / 100 })}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500"
+          />
+          <p className="text-xs text-slate-500 mt-1">Show warning notification</p>
+        </div>
+
+        {/* Pause Threshold */}
+        <div className="p-4 bg-slate-900 rounded-lg">
+          <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Pause At (%)</label>
+          <input
+            type="number"
+            min={50}
+            max={100}
+            value={Math.round((localConfig.pauseThreshold || 0.8) * 100)}
+            onChange={(e) => setLocalConfig({ ...localConfig, pauseThreshold: parseInt(e.target.value) / 100 })}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500"
+          />
+          <p className="text-xs text-slate-500 mt-1">Auto-pause controller</p>
+        </div>
+      </div>
+
+      {/* Auto Resume Toggle */}
+      <div className="mt-4 p-4 bg-slate-900 rounded-lg">
+        <label className="flex items-center justify-between cursor-pointer">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={18} className="text-yellow-400" />
+            <div>
+              <span className="text-white font-medium">Auto-Resume on Reset</span>
+              <p className="text-xs text-slate-400 mt-0.5">Automatically resume when hourly limit resets</p>
+            </div>
+          </div>
+          <div
+            onClick={() => setLocalConfig({ ...localConfig, autoResumeOnReset: !localConfig.autoResumeOnReset })}
+            className={`relative w-11 h-6 rounded-full transition-colors ${
+              localConfig.autoResumeOnReset ? 'bg-cyan-500' : 'bg-slate-600'
+            }`}
+          >
+            <div
+              className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                localConfig.autoResumeOnReset ? 'translate-x-5' : ''
+              }`}
+            />
+          </div>
+        </label>
+      </div>
     </div>
   );
 }

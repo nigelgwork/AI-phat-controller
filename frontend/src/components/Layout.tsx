@@ -2,7 +2,6 @@ import { Outlet, NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
-  Terminal,
   Monitor,
   Bot,
   CheckSquare,
@@ -15,8 +14,7 @@ import UpdateBanner from './UpdateBanner';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/mayor', icon: Crown, label: 'Mayor' },
-  { to: '/terminal', icon: Terminal, label: 'Controller' },
+  { to: '/controller', icon: Crown, label: 'Phat Controller' },
   { to: '/projects', icon: FolderGit, label: 'Projects' },
   { to: '/sessions', icon: Monitor, label: 'Sessions' },
   { to: '/agents', icon: Bot, label: 'Agents' },
@@ -64,7 +62,7 @@ export default function Layout() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <header className="h-14 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-4">
-          <h1 className="text-lg font-semibold text-white">AI Controller</h1>
+          <h1 className="text-lg font-semibold text-white">Phat Controller</h1>
           <div className="flex items-center gap-4">
             <UpdateBanner />
             <ModeToggle />

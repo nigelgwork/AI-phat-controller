@@ -51,13 +51,13 @@ export default function ApprovalModal({
   const getActionTypeDescription = (actionType: ApprovalRequest['actionType']) => {
     switch (actionType) {
       case 'planning':
-        return 'The Mayor wants to create an implementation plan for this task.';
+        return 'The Controller wants to create an implementation plan for this task.';
       case 'architecture':
-        return 'The Mayor wants to make architectural decisions that may affect the codebase structure.';
+        return 'The Controller wants to make architectural decisions that may affect the codebase structure.';
       case 'git_push':
-        return 'The Mayor wants to push changes to a remote repository.';
+        return 'The Controller wants to push changes to a remote repository.';
       case 'large_edit':
-        return 'The Mayor wants to make significant changes across multiple files.';
+        return 'The Controller wants to make significant changes across multiple files.';
     }
   };
 

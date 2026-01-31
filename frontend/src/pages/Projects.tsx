@@ -10,9 +10,18 @@ import {
   FolderOpen,
   Check,
   Bot,
+  FileText,
+  Compass,
+  Loader2,
+  X,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import CollapsibleHelp from '../components/CollapsibleHelp';
+import type { ProjectBrief, DeepDivePlan } from '../types/gastown';
 
 interface Project {
   id: string;
@@ -93,6 +102,13 @@ export default function Projects() {
             <Plus size={16} />
             Add Project
           </button>
+          <Link
+            to="/projects/new"
+            className="flex items-center gap-2 px-3 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Sparkles size={16} />
+            New Project
+          </Link>
         </div>
       </div>
 
@@ -188,9 +204,43 @@ export default function Projects() {
 }
 
 function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => void }) {
+  const queryClient = useQueryClient();
+  const [showBrief, setShowBrief] = useState(false);
+  const [showDeepDive, setShowDeepDive] = useState(false);
+
   const repoName = project.gitRemote
     ? project.gitRemote.replace(/.*[:/](.+\/.+?)(?:\.git)?$/, '$1')
     : null;
+
+  // Fetch existing brief
+  const { data: brief, isLoading: briefLoading } = useQuery({
+    queryKey: ['project-brief', project.id],
+    queryFn: () => window.electronAPI?.getProjectBrief(project.id) as Promise<ProjectBrief | null>,
+    enabled: showBrief,
+  });
+
+  // Fetch existing deep dive plan
+  const { data: deepDive, isLoading: deepDiveLoading } = useQuery({
+    queryKey: ['deep-dive', project.id],
+    queryFn: () => window.electronAPI?.getDeepDivePlan(project.id) as Promise<DeepDivePlan | null>,
+    enabled: showDeepDive,
+  });
+
+  // Generate brief mutation
+  const generateBriefMutation = useMutation({
+    mutationFn: () => window.electronAPI!.generateProjectBrief(project.id, project.path, project.name) as Promise<ProjectBrief>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-brief', project.id] });
+    },
+  });
+
+  // Generate deep dive mutation
+  const generateDeepDiveMutation = useMutation({
+    mutationFn: (focus?: string) => window.electronAPI!.generateDeepDivePlan(project.id, project.path, project.name, focus) as Promise<DeepDivePlan>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deep-dive', project.id] });
+    },
+  });
 
   return (
     <div className="p-4 hover:bg-slate-700/50 transition-colors">
@@ -228,6 +278,30 @@ function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => v
               <ExternalLink size={10} />
             </a>
           )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={() => setShowBrief(!showBrief)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
+                showBrief ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              <FileText size={12} />
+              Brief
+              {showBrief ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
+            <button
+              onClick={() => setShowDeepDive(!showDeepDive)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
+                showDeepDive ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              <Compass size={12} />
+              Deep Dive
+              {showDeepDive ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
+          </div>
         </div>
         <button
           onClick={onRemove}
@@ -236,6 +310,276 @@ function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => v
         >
           <Trash2 size={16} />
         </button>
+      </div>
+
+      {/* Project Brief Section */}
+      {showBrief && (
+        <div className="mt-4 p-4 bg-slate-900 rounded-lg">
+          {briefLoading ? (
+            <div className="flex items-center gap-2 text-slate-400">
+              <Loader2 size={14} className="animate-spin" />
+              Loading brief...
+            </div>
+          ) : brief ? (
+            <ProjectBriefView brief={brief as ProjectBrief} onRegenerate={() => generateBriefMutation.mutate()} isRegenerating={generateBriefMutation.isPending} />
+          ) : (
+            <div className="text-center py-4">
+              <FileText className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+              <p className="text-slate-400 text-sm mb-3">No brief generated yet</p>
+              <button
+                onClick={() => generateBriefMutation.mutate()}
+                disabled={generateBriefMutation.isPending}
+                className="flex items-center gap-2 mx-auto px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-700 text-white text-sm rounded-lg transition-colors"
+              >
+                {generateBriefMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    Generate Brief
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Deep Dive Section */}
+      {showDeepDive && (
+        <div className="mt-4 p-4 bg-slate-900 rounded-lg">
+          {deepDiveLoading ? (
+            <div className="flex items-center gap-2 text-slate-400">
+              <Loader2 size={14} className="animate-spin" />
+              Loading plan...
+            </div>
+          ) : deepDive ? (
+            <DeepDivePlanView plan={deepDive as DeepDivePlan} onRegenerate={() => generateDeepDiveMutation.mutate()} isRegenerating={generateDeepDiveMutation.isPending} />
+          ) : (
+            <div className="text-center py-4">
+              <Compass className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+              <p className="text-slate-400 text-sm mb-3">No deep dive plan created yet</p>
+              <button
+                onClick={() => generateDeepDiveMutation.mutate()}
+                disabled={generateDeepDiveMutation.isPending}
+                className="flex items-center gap-2 mx-auto px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-slate-700 text-white text-sm rounded-lg transition-colors"
+              >
+                {generateDeepDiveMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Planning...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    Create Deep Dive Plan
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectBriefView({ brief, onRegenerate, isRegenerating }: { brief: ProjectBrief; onRegenerate: () => void; isRegenerating: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium text-white">Project Brief</h4>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">
+            Generated {new Date(brief.createdAt).toLocaleDateString()}
+          </span>
+          <button
+            onClick={onRegenerate}
+            disabled={isRegenerating}
+            className="p-1 text-slate-400 hover:text-white disabled:opacity-50"
+            title="Regenerate brief"
+          >
+            <RefreshCw size={12} className={isRegenerating ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      <p className="text-sm text-slate-300">{brief.summary}</p>
+
+      <div className="flex flex-wrap gap-1">
+        {brief.techStack.map((tech, i) => (
+          <span key={i} className="px-2 py-0.5 bg-slate-700 text-slate-300 text-xs rounded">
+            {tech}
+          </span>
+        ))}
+      </div>
+
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+      >
+        {expanded ? 'Show less' : 'Show more'}
+        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+
+      {expanded && (
+        <div className="space-y-3 pt-2 border-t border-slate-700">
+          <div>
+            <h5 className="text-xs text-slate-400 uppercase mb-1">Architecture</h5>
+            <p className="text-sm text-slate-300">{brief.architecture}</p>
+          </div>
+
+          {brief.keyFiles.length > 0 && (
+            <div>
+              <h5 className="text-xs text-slate-400 uppercase mb-1">Key Files</h5>
+              <div className="space-y-1">
+                {brief.keyFiles.slice(0, 5).map((file, i) => (
+                  <div key={i} className="text-xs">
+                    <span className="text-cyan-400 font-mono">{file.path}</span>
+                    <span className="text-slate-500 ml-2">- {file.purpose}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {brief.suggestedTasks.length > 0 && (
+            <div>
+              <h5 className="text-xs text-slate-400 uppercase mb-1">Suggested Tasks</h5>
+              <div className="space-y-1">
+                {brief.suggestedTasks.map((task, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      task.priority === 'high' ? 'bg-red-400' :
+                      task.priority === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
+                    }`} />
+                    <span className="text-slate-300">{task.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {brief.activeWork.length > 0 && (
+            <div>
+              <h5 className="text-xs text-slate-400 uppercase mb-1">TODOs Found</h5>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {brief.activeWork.slice(0, 5).map((todo, i) => (
+                  <div key={i} className="text-xs text-slate-400 font-mono truncate">
+                    {todo}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDivePlan; onRegenerate: () => void; isRegenerating: boolean }) {
+  const queryClient = useQueryClient();
+
+  const updateMutation = useMutation({
+    mutationFn: (updates: { taskId: string; status: 'pending' | 'in_progress' | 'completed' }) =>
+      window.electronAPI!.updateDeepDivePlan(plan.projectId, { taskUpdates: [updates] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
+    },
+  });
+
+  const progress = plan.totalTasks > 0 ? (plan.completedTasks / plan.totalTasks) * 100 : 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium text-white">Deep Dive Plan</h4>
+        <div className="flex items-center gap-2">
+          <span className={`px-2 py-0.5 text-xs rounded ${
+            plan.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+            plan.status === 'in_progress' ? 'bg-cyan-500/20 text-cyan-400' :
+            plan.status === 'approved' ? 'bg-purple-500/20 text-purple-400' :
+            'bg-slate-700 text-slate-400'
+          }`}>
+            {plan.status}
+          </span>
+          <button
+            onClick={onRegenerate}
+            disabled={isRegenerating}
+            className="p-1 text-slate-400 hover:text-white disabled:opacity-50"
+            title="Regenerate plan"
+          >
+            <RefreshCw size={12} className={isRegenerating ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <span>Progress</span>
+          <span>{plan.completedTasks} / {plan.totalTasks} tasks</span>
+        </div>
+        <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-purple-500 transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Phases */}
+      <div className="space-y-3">
+        {plan.phases.map((phase, phaseIdx) => (
+          <div key={phase.id} className="border border-slate-700 rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-slate-800 border-b border-slate-700">
+              <h5 className="text-sm font-medium text-white">
+                Phase {phaseIdx + 1}: {phase.name}
+              </h5>
+              <p className="text-xs text-slate-400">{phase.description}</p>
+            </div>
+            <div className="divide-y divide-slate-700">
+              {phase.tasks.map((task) => (
+                <div key={task.id} className="px-3 py-2 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      const nextStatus = task.status === 'pending' ? 'in_progress' :
+                                        task.status === 'in_progress' ? 'completed' : 'pending';
+                      updateMutation.mutate({ taskId: task.id, status: nextStatus });
+                    }}
+                    disabled={updateMutation.isPending}
+                    className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                      task.status === 'completed' ? 'bg-green-500 border-green-500' :
+                      task.status === 'in_progress' ? 'bg-cyan-500 border-cyan-500' :
+                      'border-slate-500 hover:border-slate-400'
+                    }`}
+                  >
+                    {task.status === 'completed' && <Check size={10} className="text-white" />}
+                    {task.status === 'in_progress' && <Loader2 size={10} className="text-white animate-spin" />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm ${task.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+                      {task.title}
+                    </p>
+                  </div>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                    task.estimatedComplexity === 'high' ? 'bg-red-500/20 text-red-400' :
+                    task.estimatedComplexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-green-500/20 text-green-400'
+                  }`}>
+                    {task.estimatedComplexity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
