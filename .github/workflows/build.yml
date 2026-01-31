@@ -42,14 +42,22 @@ jobs:
         shell: pwsh
         run: |
           vcpkg install icu:x64-windows
-          echo "ICU_ROOT=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
-          echo "CGO_CFLAGS=-I$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" >> $env:GITHUB_ENV
-          echo "CGO_LDFLAGS=-L$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib" >> $env:GITHUB_ENV
+          # Output paths for next step
+          echo "ICU installed at: $env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
 
       - name: Build Go tools (gt and bd)
         shell: bash
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: "-I${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows/include"
+          CGO_LDFLAGS: "-L${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows/lib -licuuc -licuin -licudt"
+          CGO_CXXFLAGS: "-I${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows/include"
         run: |
           mkdir -p resources/bin
+
+          # Debug: Show CGO flags
+          echo "CGO_CFLAGS: $CGO_CFLAGS"
+          echo "CGO_LDFLAGS: $CGO_LDFLAGS"
 
           # Clone and build gt (pinned to v0.5.0 for Windows compatibility)
           # Note: gastown HEAD uses syscall.Kill which doesn't work on Windows
@@ -61,7 +69,7 @@ jobs:
           # Clone and build bd (needs CGO for gozstd dependency)
           git clone --depth 1 https://github.com/steveyegge/beads.git .go-build-temp/beads
           cd .go-build-temp/beads
-          CGO_ENABLED=1 go build -o ../../resources/bin/bd.exe ./cmd/bd
+          go build -o ../../resources/bin/bd.exe ./cmd/bd
           cd ../..
 
           # Verify builds
