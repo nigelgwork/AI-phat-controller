@@ -38,6 +38,14 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Install ICU via vcpkg (required for beads)
+        shell: pwsh
+        run: |
+          vcpkg install icu:x64-windows
+          echo "ICU_ROOT=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+          echo "CGO_CFLAGS=-I$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include" >> $env:GITHUB_ENV
+          echo "CGO_LDFLAGS=-L$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib" >> $env:GITHUB_ENV
+
       - name: Build Go tools (gt and bd)
         shell: bash
         run: |
