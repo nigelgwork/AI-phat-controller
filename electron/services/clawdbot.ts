@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 // Personality trait levels
 export type TraitLevel = 'low' | 'medium' | 'high';
@@ -221,7 +221,7 @@ export function savePersonality(
   // Create new
   const newPersonality: ClawdbotPersonality = {
     ...personality,
-    id: personality.id || uuidv4(),
+    id: personality.id || randomUUID(),
     isDefault: false,
     createdAt: now,
     updatedAt: now,
