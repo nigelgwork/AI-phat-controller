@@ -145,11 +145,14 @@ class WindowsExecutor implements IExecutor {
       }
     }
 
+    // Add the prompt as positional argument (Claude Code expects this, not stdin)
+    args.push('--', message);
+
     // Use project path if provided, otherwise use gastown path
     const cwd = projectPath || this.gastownPath;
 
-    // Pass message via stdin to avoid shell escaping issues
-    return this.spawnWithStdin(this.claudePath, args, message, cwd, start, 120000, executionId);
+    // Use spawn without stdin since prompt is passed as argument
+    return this.spawnCommand(this.claudePath, args, cwd, start, 120000, executionId);  // 2 min idle timeout
   }
 
   private spawnWithStdin(
@@ -158,15 +161,31 @@ class WindowsExecutor implements IExecutor {
     stdinData: string,
     cwd: string,
     start: number,
-    timeout = 120000,
+    timeout = 300000,  // Increased to 5 minutes for complex analysis tasks
     executionId?: string
   ): Promise<ExecuteResult> {
     return new Promise((resolve) => {
       const validCwd = getValidCwd(cwd);
 
       console.log('[Executor] Running Claude with stdin in:', validCwd);
+      console.log('[Executor] Command:', cmd);
       console.log('[Executor] Args:', args);
+      console.log('[Executor] Stdin length:', stdinData.length);
       if (executionId) console.log('[Executor] Execution ID:', executionId);
+
+      // Send to renderer via BrowserWindow for debugging
+      const { BrowserWindow } = require('electron');
+      BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+        win.webContents.send('executor-log', {
+          type: 'spawn',
+          cmd,
+          args,
+          cwd: validCwd,
+          stdinLength: stdinData.length,
+          executionId,
+          timestamp: new Date().toISOString(),
+        });
+      });
 
       const child = spawn(cmd, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -185,8 +204,14 @@ class WindowsExecutor implements IExecutor {
       let stderr = '';
       let wasCancelled = false;
 
-      child.stdout?.on('data', (data) => { stdout += data; });
-      child.stderr?.on('data', (data) => { stderr += data; });
+      child.stdout?.on('data', (data) => {
+        stdout += data;
+        console.log('[Executor] stdout chunk:', data.toString().substring(0, 200));
+      });
+      child.stderr?.on('data', (data) => {
+        stderr += data;
+        console.log('[Executor] stderr chunk:', data.toString().substring(0, 200));
+      });
 
       // Write message to stdin and close it
       if (child.stdin) {
@@ -243,6 +268,178 @@ class WindowsExecutor implements IExecutor {
         clearTimeout(timer);
         if (executionId) runningProcesses.delete(executionId);
         console.log('[Executor] Claude spawn error:', err);
+        resolve({
+          success: false,
+          error: err.message,
+          duration: Date.now() - start,
+        });
+      });
+    });
+  }
+
+  private spawnCommand(
+    cmd: string,
+    args: string[],
+    cwd: string,
+    start: number,
+    idleTimeout = 120000,  // Idle timeout - resets on activity
+    executionId?: string
+  ): Promise<ExecuteResult> {
+    return new Promise((resolve) => {
+      const validCwd = getValidCwd(cwd);
+
+      console.log('[Executor] Running command in:', validCwd);
+      console.log('[Executor] Command:', cmd);
+      console.log('[Executor] Args count:', args.length);
+      console.log('[Executor] First few args:', args.slice(0, 5));
+      console.log('[Executor] Idle timeout:', idleTimeout / 1000, 'seconds');
+      if (executionId) console.log('[Executor] Execution ID:', executionId);
+
+      // Send to renderer via BrowserWindow for debugging
+      const { BrowserWindow } = require('electron');
+      BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+        win.webContents.send('executor-log', {
+          type: 'spawn-command',
+          cmd,
+          argsCount: args.length,
+          cwd: validCwd,
+          idleTimeout,
+          executionId,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      const child = spawn(cmd, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, GASTOWN_PATH: this.gastownPath },
+        cwd: validCwd,
+        windowsHide: true,
+        shell: true,  // Needed on Windows to find .cmd files
+      });
+
+      // Track the process for cancellation
+      if (executionId) {
+        runningProcesses.set(executionId, child);
+      }
+
+      let stdout = '';
+      let stderr = '';
+      let wasCancelled = false;
+      let lastActivity = Date.now();
+
+      // Idle timeout - resets whenever there's output activity
+      const resetIdleTimer = () => {
+        lastActivity = Date.now();
+      };
+
+      const idleChecker = setInterval(() => {
+        const idleTime = Date.now() - lastActivity;
+        if (idleTime >= idleTimeout) {
+          clearInterval(idleChecker);
+          child.kill();
+          if (executionId) runningProcesses.delete(executionId);
+          console.log('[Executor] IDLE TIMEOUT - no activity for', idleTimeout / 1000, 'seconds');
+          BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+            win.webContents.send('executor-log', {
+              type: 'idle-timeout',
+              idleTime,
+              stdoutLength: stdout.length,
+              executionId,
+              timestamp: new Date().toISOString(),
+            });
+          });
+          resolve({
+            success: false,
+            error: `Idle timeout - no activity for ${idleTimeout / 1000} seconds`,
+            duration: Date.now() - start,
+          });
+        }
+      }, 5000);  // Check every 5 seconds
+
+      child.stdout?.on('data', (data) => {
+        stdout += data;
+        resetIdleTimer();
+        const chunk = data.toString().substring(0, 200);
+        console.log('[Executor] stdout chunk:', chunk);
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('executor-log', {
+            type: 'stdout',
+            chunk,
+            totalLength: stdout.length,
+            executionId,
+            timestamp: new Date().toISOString(),
+          });
+        });
+      });
+      child.stderr?.on('data', (data) => {
+        stderr += data;
+        resetIdleTimer();
+        const chunk = data.toString().substring(0, 200);
+        console.log('[Executor] stderr chunk:', chunk);
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('executor-log', {
+            type: 'stderr',
+            chunk,
+            totalLength: stderr.length,
+            executionId,
+            timestamp: new Date().toISOString(),
+          });
+        });
+      });
+
+      child.on('close', (code, signal) => {
+        clearInterval(idleChecker);
+        if (executionId) runningProcesses.delete(executionId);
+        const duration = Date.now() - start;
+
+        // Check if killed by signal (cancelled)
+        if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+          wasCancelled = true;
+        }
+
+        console.log('[Executor] Exit code:', code, 'signal:', signal, 'duration:', duration);
+        console.log('[Executor] stdout length:', stdout.length);
+        if (stderr) console.log('[Executor] stderr:', stderr.substring(0, 500));
+
+        // Send result to renderer
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('executor-log', {
+            type: 'complete',
+            code,
+            signal,
+            duration,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+            executionId,
+            timestamp: new Date().toISOString(),
+          });
+        });
+
+        if (wasCancelled) {
+          resolve({
+            success: false,
+            error: 'Execution cancelled',
+            duration,
+          });
+        } else if (code === 0 || stdout.trim()) {
+          resolve({
+            success: true,
+            response: stdout.trim() || stderr.trim(),
+            duration,
+          });
+        } else {
+          resolve({
+            success: false,
+            error: stderr.trim() || `Exit code ${code}`,
+            duration,
+          });
+        }
+      });
+
+      child.on('error', (err) => {
+        clearInterval(idleChecker);
+        if (executionId) runningProcesses.delete(executionId);
+        console.log('[Executor] Spawn error:', err);
         resolve({
           success: false,
           error: err.message,
@@ -451,31 +648,53 @@ class WslExecutor implements IExecutor {
       }
     }
 
+    // Add the prompt as positional argument (Claude Code expects this, not stdin)
+    args.push('--', message);
+
     // Convert project path to WSL path if provided
     const wslCwd = projectPath ? this.toWslPath(projectPath) : this.wslGastownPath;
 
-    return this.wslExecWithStdin('claude', args, message, start, 120000, wslCwd, executionId);
+    return this.wslExecCommand('claude', args, start, 120000, wslCwd, executionId);  // 2 min idle timeout
   }
 
-  private wslExecWithStdin(cmd: string, args: string[], stdinData: string, start: number, timeout = 120000, wslCwd?: string, executionId?: string): Promise<ExecuteResult> {
+  private wslExecCommand(cmd: string, args: string[], start: number, idleTimeout = 120000, wslCwd?: string, executionId?: string): Promise<ExecuteResult> {
     return new Promise((resolve) => {
-      // Build argument list without the message (message goes to stdin)
-      const argsStr = args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
+      // Build argument list - escape arguments properly for bash
+      const argsStr = args.map(a => {
+        // Use single quotes and escape any single quotes in the string
+        return `'${a.replace(/'/g, "'\\''")}'`;
+      }).join(' ');
 
       // If cwd is specified, wrap command with cd
       const fullCmd = wslCwd
-        ? `cd "${wslCwd}" && ${cmd} ${argsStr}`
+        ? `cd '${wslCwd}' && ${cmd} ${argsStr}`
         : `${cmd} ${argsStr}`;
 
       const wslArgs = this.distro
         ? ['-d', this.distro, 'bash', '-c', fullCmd]
         : ['bash', '-c', fullCmd];
 
-      console.log('[Executor] WSL running:', fullCmd);
+      console.log('[Executor] WSL running command');
+      console.log('[Executor] Args count:', args.length);
+      console.log('[Executor] Idle timeout:', idleTimeout / 1000, 'seconds');
       if (executionId) console.log('[Executor] Execution ID:', executionId);
 
+      // Send to renderer via BrowserWindow for debugging
+      const { BrowserWindow } = require('electron');
+      BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+        win.webContents.send('executor-log', {
+          type: 'wsl-spawn',
+          cmd,
+          argsCount: args.length,
+          cwd: wslCwd,
+          idleTimeout,
+          executionId,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
       const child = spawn('wsl.exe', wslArgs, {
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: {
           ...process.env,
           WSLENV: 'GASTOWN_PATH/p',
@@ -491,28 +710,70 @@ class WslExecutor implements IExecutor {
       let stdout = '';
       let stderr = '';
       let wasCancelled = false;
+      let lastActivity = Date.now();
 
-      child.stdout?.on('data', (data) => { stdout += data; });
-      child.stderr?.on('data', (data) => { stderr += data; });
+      // Idle timeout - resets whenever there's output activity
+      const resetIdleTimer = () => {
+        lastActivity = Date.now();
+      };
 
-      // Write message to stdin and close it
-      if (child.stdin) {
-        child.stdin.write(stdinData);
-        child.stdin.end();
-      }
+      const idleChecker = setInterval(() => {
+        const idleTime = Date.now() - lastActivity;
+        if (idleTime >= idleTimeout) {
+          clearInterval(idleChecker);
+          child.kill();
+          if (executionId) runningProcesses.delete(executionId);
+          console.log('[Executor] WSL IDLE TIMEOUT - no activity for', idleTimeout / 1000, 'seconds');
+          BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+            win.webContents.send('executor-log', {
+              type: 'wsl-idle-timeout',
+              idleTime,
+              stdoutLength: stdout.length,
+              executionId,
+              timestamp: new Date().toISOString(),
+            });
+          });
+          resolve({
+            success: false,
+            error: `Idle timeout - no activity for ${idleTimeout / 1000} seconds`,
+            duration: Date.now() - start,
+          });
+        }
+      }, 5000);  // Check every 5 seconds
 
-      const timer = setTimeout(() => {
-        child.kill();
-        if (executionId) runningProcesses.delete(executionId);
-        resolve({
-          success: false,
-          error: `Timeout after ${timeout / 1000} seconds`,
-          duration: Date.now() - start,
+      child.stdout?.on('data', (data) => {
+        stdout += data;
+        resetIdleTimer();
+        const chunk = data.toString().substring(0, 200);
+        console.log('[Executor] WSL stdout chunk:', chunk);
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('executor-log', {
+            type: 'wsl-stdout',
+            chunk,
+            totalLength: stdout.length,
+            executionId,
+            timestamp: new Date().toISOString(),
+          });
         });
-      }, timeout);
+      });
+      child.stderr?.on('data', (data) => {
+        stderr += data;
+        resetIdleTimer();
+        const chunk = data.toString().substring(0, 200);
+        console.log('[Executor] WSL stderr chunk:', chunk);
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('executor-log', {
+            type: 'wsl-stderr',
+            chunk,
+            totalLength: stderr.length,
+            executionId,
+            timestamp: new Date().toISOString(),
+          });
+        });
+      });
 
       child.on('close', (code, signal) => {
-        clearTimeout(timer);
+        clearInterval(idleChecker);
         if (executionId) runningProcesses.delete(executionId);
         const duration = Date.now() - start;
 
@@ -521,8 +782,23 @@ class WslExecutor implements IExecutor {
           wasCancelled = true;
         }
 
-        console.log('[Executor] WSL Claude exit code:', code, 'signal:', signal);
-        if (stderr) console.log('[Executor] WSL Claude stderr:', stderr);
+        console.log('[Executor] WSL exit code:', code, 'signal:', signal, 'duration:', duration);
+        console.log('[Executor] WSL stdout length:', stdout.length);
+        if (stderr) console.log('[Executor] WSL stderr:', stderr.substring(0, 500));
+
+        // Send result to renderer
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('executor-log', {
+            type: 'wsl-complete',
+            code,
+            signal,
+            duration,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+            executionId,
+            timestamp: new Date().toISOString(),
+          });
+        });
 
         if (wasCancelled) {
           resolve({
@@ -546,7 +822,7 @@ class WslExecutor implements IExecutor {
       });
 
       child.on('error', (err) => {
-        clearTimeout(timer);
+        clearInterval(idleChecker);
         if (executionId) runningProcesses.delete(executionId);
         resolve({
           success: false,

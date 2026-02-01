@@ -752,6 +752,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('ntfy:questionAnswered', handler);
     return () => ipcRenderer.removeListener('ntfy:questionAnswered', handler);
   },
+
+  // Executor debugging logs
+  onExecutorLog: (callback: (log: { type: string; [key: string]: unknown }) => void) => {
+    const handler = (_: unknown, log: { type: string; [key: string]: unknown }) => {
+      console.log('[Executor Debug]', log);
+      callback(log);
+    };
+    ipcRenderer.on('executor-log', handler);
+    return () => ipcRenderer.removeListener('executor-log', handler);
+  },
 });
 
 // Type declaration for the window object
@@ -904,6 +914,8 @@ declare global {
       // ntfy event listeners
       onNtfyQuestionAsked: (callback: (question: PendingQuestion) => void) => () => void;
       onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
+      // Executor debugging
+      onExecutorLog: (callback: (log: { type: string; [key: string]: unknown }) => void) => () => void;
       // tmux Session Management
       isTmuxAvailable: () => Promise<boolean>;
       getTmuxStatus: () => Promise<TmuxStatus>;
