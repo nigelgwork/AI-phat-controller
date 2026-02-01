@@ -119,11 +119,43 @@ import {
   MCPServerConfig,
   DEFAULT_MCP_CONFIGS,
 } from '../services/mcp-client';
+import {
+  isTmuxAvailable,
+  listSessions as listTmuxSessions,
+  createSession as createTmuxSession,
+  attachSession as attachTmuxSession,
+  killSession as killTmuxSession,
+  getSessionHistory as getTmuxSessionHistory,
+  sendKeys as sendTmuxKeys,
+  updateSessionMeta,
+  renameSession as renameTmuxSession,
+  TmuxSession,
+} from '../services/tmux';
+import {
+  getPersonalities,
+  getPersonality,
+  getCurrentPersonality,
+  getCurrentPersonalityId,
+  setCurrentPersonality,
+  savePersonality,
+  deletePersonality,
+  buildSystemPrompt,
+  getGreeting,
+  ClawdbotPersonality,
+} from '../services/clawdbot';
 
 // System prompt for Claude Code
 function getSystemPrompt(): string {
   const gastownPath = settings.get('gastownPath');
-  return `You are the AI Controller for Gas Town, a multi-agent orchestration system. You have access to the Gas Town workspace at ${gastownPath}. Available CLI tools: gt (Gas Town CLI for managing rigs, convoys, agents) and bd (Beads CLI for managing work items). Common commands: gt rig list, gt convoy list, bd list, bd ready. Help the user manage their multi-agent coding workflow. Be concise and helpful.`;
+  const basePrompt = `You are the AI Controller for Gas Town, a multi-agent orchestration system. You have access to the Gas Town workspace at ${gastownPath}. Available CLI tools: gt (Gas Town CLI for managing rigs, convoys, agents) and bd (Beads CLI for managing work items). Common commands: gt rig list, gt convoy list, bd list, bd ready. Help the user manage their multi-agent coding workflow.`;
+
+  // Apply personality if available
+  const personality = getCurrentPersonality();
+  if (personality) {
+    return buildSystemPrompt(personality, basePrompt);
+  }
+
+  return basePrompt + ' Be concise and helpful.';
 }
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
@@ -713,5 +745,80 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     const manager = getMCPManager();
     await manager.autoConnectEnabled();
     return manager.getConnectedServers();
+  });
+
+  // ============================================
+  // tmux Session Management handlers
+  // ============================================
+  ipcMain.handle('tmux:available', async () => {
+    return isTmuxAvailable();
+  });
+
+  ipcMain.handle('tmux:list', async () => {
+    return listTmuxSessions();
+  });
+
+  ipcMain.handle('tmux:create', async (_, name: string, projectId?: string, cwd?: string) => {
+    return createTmuxSession(name, projectId, cwd);
+  });
+
+  ipcMain.handle('tmux:attach', async (_, name: string) => {
+    return attachTmuxSession(name);
+  });
+
+  ipcMain.handle('tmux:kill', async (_, name: string) => {
+    return killTmuxSession(name);
+  });
+
+  ipcMain.handle('tmux:history', async (_, name: string, lines?: number) => {
+    return getTmuxSessionHistory(name, lines);
+  });
+
+  ipcMain.handle('tmux:sendKeys', async (_, name: string, keys: string) => {
+    return sendTmuxKeys(name, keys);
+  });
+
+  ipcMain.handle('tmux:updateMeta', (_, name: string, updates: { projectId?: string; notes?: string }) => {
+    updateSessionMeta(name, updates);
+    return { success: true };
+  });
+
+  ipcMain.handle('tmux:rename', async (_, oldName: string, newName: string) => {
+    return renameTmuxSession(oldName, newName);
+  });
+
+  // ============================================
+  // Clawdbot Personality handlers
+  // ============================================
+  ipcMain.handle('clawdbot:getPersonalities', () => {
+    return getPersonalities();
+  });
+
+  ipcMain.handle('clawdbot:getPersonality', (_, id: string) => {
+    return getPersonality(id);
+  });
+
+  ipcMain.handle('clawdbot:getCurrentPersonality', () => {
+    return getCurrentPersonality();
+  });
+
+  ipcMain.handle('clawdbot:getCurrentPersonalityId', () => {
+    return getCurrentPersonalityId();
+  });
+
+  ipcMain.handle('clawdbot:setCurrentPersonality', (_, id: string) => {
+    return setCurrentPersonality(id);
+  });
+
+  ipcMain.handle('clawdbot:savePersonality', (_, personality: Omit<ClawdbotPersonality, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
+    return savePersonality(personality);
+  });
+
+  ipcMain.handle('clawdbot:deletePersonality', (_, id: string) => {
+    return deletePersonality(id);
+  });
+
+  ipcMain.handle('clawdbot:getGreeting', () => {
+    return getGreeting();
   });
 }

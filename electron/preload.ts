@@ -332,6 +332,44 @@ export interface MCPTool {
   };
 }
 
+// tmux types
+export interface TmuxSession {
+  id: string;
+  name: string;
+  windows: number;
+  created: Date;
+  attached: boolean;
+  projectId?: string;
+  notes?: string;
+}
+
+export interface TmuxHistoryResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
+// Clawdbot personality types
+export type TraitLevel = 'low' | 'medium' | 'high';
+
+export interface ClawdbotPersonality {
+  id: string;
+  name: string;
+  description: string;
+  traits: {
+    verbosity: TraitLevel;
+    humor: TraitLevel;
+    formality: TraitLevel;
+    enthusiasm: TraitLevel;
+  };
+  customInstructions?: string;
+  greeting?: string;
+  signoff?: string;
+  isDefault?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -561,6 +599,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp:callTool', serverName, toolName, args),
   autoConnectMcpServers: (): Promise<string[]> =>
     ipcRenderer.invoke('mcp:autoConnect'),
+
+  // tmux Session Management
+  isTmuxAvailable: (): Promise<boolean> =>
+    ipcRenderer.invoke('tmux:available'),
+  listTmuxSessions: (): Promise<TmuxSession[]> =>
+    ipcRenderer.invoke('tmux:list'),
+  createTmuxSession: (name: string, projectId?: string, cwd?: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('tmux:create', name, projectId, cwd),
+  attachTmuxSession: (name: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('tmux:attach', name),
+  killTmuxSession: (name: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('tmux:kill', name),
+  getTmuxSessionHistory: (name: string, lines?: number): Promise<TmuxHistoryResult> =>
+    ipcRenderer.invoke('tmux:history', name, lines),
+  sendTmuxKeys: (name: string, keys: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('tmux:sendKeys', name, keys),
+  updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('tmux:updateMeta', name, updates),
+  renameTmuxSession: (oldName: string, newName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('tmux:rename', oldName, newName),
+
+  // Clawdbot Personality Management
+  getPersonalities: (): Promise<ClawdbotPersonality[]> =>
+    ipcRenderer.invoke('clawdbot:getPersonalities'),
+  getPersonality: (id: string): Promise<ClawdbotPersonality | undefined> =>
+    ipcRenderer.invoke('clawdbot:getPersonality', id),
+  getCurrentPersonality: (): Promise<ClawdbotPersonality | undefined> =>
+    ipcRenderer.invoke('clawdbot:getCurrentPersonality'),
+  getCurrentPersonalityId: (): Promise<string | null> =>
+    ipcRenderer.invoke('clawdbot:getCurrentPersonalityId'),
+  setCurrentPersonality: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('clawdbot:setCurrentPersonality', id),
+  savePersonality: (personality: Omit<ClawdbotPersonality, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<ClawdbotPersonality> =>
+    ipcRenderer.invoke('clawdbot:savePersonality', personality),
+  deletePersonality: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('clawdbot:deletePersonality', id),
+  getClawdbotGreeting: (): Promise<string> =>
+    ipcRenderer.invoke('clawdbot:getGreeting'),
 
   // Event listeners
   onUpdateChecking: (callback: () => void) => {
@@ -809,6 +885,25 @@ declare global {
       // ntfy event listeners
       onNtfyQuestionAsked: (callback: (question: PendingQuestion) => void) => () => void;
       onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
+      // tmux Session Management
+      isTmuxAvailable: () => Promise<boolean>;
+      listTmuxSessions: () => Promise<TmuxSession[]>;
+      createTmuxSession: (name: string, projectId?: string, cwd?: string) => Promise<{ success: boolean; error?: string }>;
+      attachTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
+      killTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
+      getTmuxSessionHistory: (name: string, lines?: number) => Promise<TmuxHistoryResult>;
+      sendTmuxKeys: (name: string, keys: string) => Promise<{ success: boolean; error?: string }>;
+      updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }) => Promise<{ success: boolean }>;
+      renameTmuxSession: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+      // Clawdbot Personality Management
+      getPersonalities: () => Promise<ClawdbotPersonality[]>;
+      getPersonality: (id: string) => Promise<ClawdbotPersonality | undefined>;
+      getCurrentPersonality: () => Promise<ClawdbotPersonality | undefined>;
+      getCurrentPersonalityId: () => Promise<string | null>;
+      setCurrentPersonality: (id: string) => Promise<boolean>;
+      savePersonality: (personality: Omit<ClawdbotPersonality, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<ClawdbotPersonality>;
+      deletePersonality: (id: string) => Promise<boolean>;
+      getClawdbotGreeting: () => Promise<string>;
     };
   }
 }

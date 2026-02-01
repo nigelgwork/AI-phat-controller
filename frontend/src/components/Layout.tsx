@@ -8,6 +8,8 @@ import {
   Settings,
   FolderGit,
   Crown,
+  Terminal,
+  Sparkles,
 } from 'lucide-react';
 import ModeToggle from './ModeToggle';
 import UpdateBanner from './UpdateBanner';
@@ -19,6 +21,8 @@ const navItems = [
   { to: '/sessions', icon: Monitor, label: 'Sessions' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
+  { to: '/tmux', icon: Terminal, label: 'tmux Sessions' },
+  { to: '/clawdbot', icon: Sparkles, label: 'Clawdbot' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

@@ -297,12 +297,71 @@ interface ElectronAPI {
   getMcpServerTools: (name: string) => Promise<MCPTool[]>;
   callMcpTool: (serverName: string, toolName: string, args: Record<string, unknown>) => Promise<unknown>;
   autoConnectMcpServers: () => Promise<string[]>;
+
+  // tmux Session Management
+  isTmuxAvailable: () => Promise<boolean>;
+  listTmuxSessions: () => Promise<TmuxSession[]>;
+  createTmuxSession: (name: string, projectId?: string, cwd?: string) => Promise<{ success: boolean; error?: string }>;
+  attachTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
+  killTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
+  getTmuxSessionHistory: (name: string, lines?: number) => Promise<TmuxHistoryResult>;
+  sendTmuxKeys: (name: string, keys: string) => Promise<{ success: boolean; error?: string }>;
+  updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }) => Promise<{ success: boolean }>;
+  renameTmuxSession: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Clawdbot Personality Management
+  getPersonalities: () => Promise<ClawdbotPersonality[]>;
+  getPersonality: (id: string) => Promise<ClawdbotPersonality | undefined>;
+  getCurrentPersonality: () => Promise<ClawdbotPersonality | undefined>;
+  getCurrentPersonalityId: () => Promise<string | null>;
+  setCurrentPersonality: (id: string) => Promise<boolean>;
+  savePersonality: (personality: Omit<ClawdbotPersonality, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<ClawdbotPersonality>;
+  deletePersonality: (id: string) => Promise<boolean>;
+  getClawdbotGreeting: () => Promise<string>;
 }
 
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
   }
+}
+
+// tmux types
+export interface TmuxSession {
+  id: string;
+  name: string;
+  windows: number;
+  created: Date;
+  attached: boolean;
+  projectId?: string;
+  notes?: string;
+}
+
+export interface TmuxHistoryResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
+// Clawdbot personality types
+export type TraitLevel = 'low' | 'medium' | 'high';
+
+export interface ClawdbotPersonality {
+  id: string;
+  name: string;
+  description: string;
+  traits: {
+    verbosity: TraitLevel;
+    humor: TraitLevel;
+    formality: TraitLevel;
+    enthusiasm: TraitLevel;
+  };
+  customInstructions?: string;
+  greeting?: string;
+  signoff?: string;
+  isDefault?: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export {};

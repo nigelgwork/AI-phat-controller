@@ -10,6 +10,9 @@ import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
 import Settings from './pages/Settings';
 import Setup from './pages/Setup';
+import TmuxSessions from './pages/TmuxSessions';
+import ClawdbotSettings from './pages/ClawdbotSettings';
+import FloatingAssistant from './components/FloatingAssistant';
 
 function App() {
   const [hasCompletedSetup, setHasCompletedSetup] = useState<boolean | null>(null);
@@ -39,18 +42,23 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="controller" element={<Controller />} />
-        <Route path="projects" element={<Projects />} />
-        <Route path="projects/new" element={<NewProject />} />
-        <Route path="sessions" element={<Sessions />} />
-        <Route path="agents" element={<Agents />} />
-        <Route path="tasks" element={<Tasks />} />
-        <Route path="settings" element={<Settings />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="controller" element={<Controller />} />
+          <Route path="projects" element={<Projects />} />
+          <Route path="projects/new" element={<NewProject />} />
+          <Route path="sessions" element={<Sessions />} />
+          <Route path="agents" element={<Agents />} />
+          <Route path="tasks" element={<Tasks />} />
+          <Route path="tmux" element={<TmuxSessions />} />
+          <Route path="clawdbot" element={<ClawdbotSettings />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+      </Routes>
+      <FloatingAssistant />
+    </>
   );
 }
 
