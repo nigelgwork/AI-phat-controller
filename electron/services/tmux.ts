@@ -4,6 +4,9 @@ import Store from 'electron-store';
 
 const execAsync = promisify(exec);
 
+// Check if running on Windows
+const isWindows = process.platform === 'win32';
+
 // Store for tmux session metadata
 interface TmuxSessionMeta {
   projectId?: string;
@@ -40,13 +43,79 @@ export interface TmuxHistoryResult {
 
 /**
  * Check if tmux is available
+ * On Windows, checks for WSL tmux
  */
 export async function isTmuxAvailable(): Promise<boolean> {
   try {
-    await execAsync('which tmux', { timeout: 5000 });
-    return true;
+    if (isWindows) {
+      // On Windows, check if tmux is available via WSL
+      await execAsync('wsl.exe -e which tmux', { timeout: 10000 });
+      return true;
+    } else {
+      await execAsync('which tmux', { timeout: 5000 });
+      return true;
+    }
   } catch {
     return false;
+  }
+}
+
+/**
+ * Get detailed tmux availability status
+ */
+export async function getTmuxStatus(): Promise<{
+  available: boolean;
+  platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
+  message: string;
+}> {
+  if (isWindows) {
+    // Check if WSL is available
+    try {
+      await execAsync('wsl.exe --status', { timeout: 5000 });
+      // WSL exists, check for tmux
+      try {
+        await execAsync('wsl.exe -e which tmux', { timeout: 10000 });
+        return {
+          available: true,
+          platform: 'wsl',
+          message: 'tmux available via WSL',
+        };
+      } catch {
+        return {
+          available: false,
+          platform: 'wsl',
+          message: 'WSL is installed but tmux is not. Run: wsl -e sudo apt install tmux',
+        };
+      }
+    } catch {
+      return {
+        available: false,
+        platform: 'windows-no-wsl',
+        message: 'tmux requires WSL on Windows. Install WSL first: wsl --install',
+      };
+    }
+  } else if (process.platform === 'darwin') {
+    try {
+      await execAsync('which tmux', { timeout: 5000 });
+      return { available: true, platform: 'macos', message: 'tmux available' };
+    } catch {
+      return {
+        available: false,
+        platform: 'macos',
+        message: 'tmux not installed. Run: brew install tmux',
+      };
+    }
+  } else {
+    try {
+      await execAsync('which tmux', { timeout: 5000 });
+      return { available: true, platform: 'linux', message: 'tmux available' };
+    } catch {
+      return {
+        available: false,
+        platform: 'linux',
+        message: 'tmux not installed. Run: sudo apt install tmux',
+      };
+    }
   }
 }
 

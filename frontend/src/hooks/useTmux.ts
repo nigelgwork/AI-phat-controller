@@ -16,6 +16,12 @@ export interface TmuxHistoryResult {
   error?: string;
 }
 
+export interface TmuxStatus {
+  available: boolean;
+  platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
+  message: string;
+}
+
 /**
  * Hook to check if tmux is available on the system
  */
@@ -24,6 +30,21 @@ export function useTmuxAvailable() {
     queryKey: ['tmux-available'],
     queryFn: () => window.electronAPI?.isTmuxAvailable() ?? Promise.resolve(false),
     staleTime: 60000, // Cache for 1 minute
+  });
+}
+
+/**
+ * Hook to get detailed tmux status including platform info
+ */
+export function useTmuxStatus() {
+  return useQuery({
+    queryKey: ['tmux-status'],
+    queryFn: () => window.electronAPI?.getTmuxStatus() ?? Promise.resolve({
+      available: false,
+      platform: 'windows-no-wsl' as const,
+      message: 'Unable to check tmux status',
+    }),
+    staleTime: 60000,
   });
 }
 

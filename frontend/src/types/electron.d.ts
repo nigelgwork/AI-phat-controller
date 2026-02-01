@@ -300,6 +300,7 @@ interface ElectronAPI {
 
   // tmux Session Management
   isTmuxAvailable: () => Promise<boolean>;
+  getTmuxStatus: () => Promise<TmuxStatus>;
   listTmuxSessions: () => Promise<TmuxSession[]>;
   createTmuxSession: (name: string, projectId?: string, cwd?: string) => Promise<{ success: boolean; error?: string }>;
   attachTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
@@ -341,6 +342,12 @@ export interface TmuxHistoryResult {
   success: boolean;
   content?: string;
   error?: string;
+}
+
+export interface TmuxStatus {
+  available: boolean;
+  platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
+  message: string;
 }
 
 // Clawdbot personality types

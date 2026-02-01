@@ -121,6 +121,7 @@ import {
 } from '../services/mcp-client';
 import {
   isTmuxAvailable,
+  getTmuxStatus,
   listSessions as listTmuxSessions,
   createSession as createTmuxSession,
   attachSession as attachTmuxSession,
@@ -181,9 +182,9 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   });
 
   // Claude Code execution
-  ipcMain.handle('claude:execute', async (_, message: string, systemPrompt?: string) => {
+  ipcMain.handle('claude:execute', async (_, message: string, systemPrompt?: string, projectPath?: string) => {
     const executor = await getExecutor();
-    return executor.runClaude(message, systemPrompt || getSystemPrompt());
+    return executor.runClaude(message, systemPrompt || getSystemPrompt(), projectPath);
   });
 
   // Gas Town CLI execution
@@ -752,6 +753,10 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   // ============================================
   ipcMain.handle('tmux:available', async () => {
     return isTmuxAvailable();
+  });
+
+  ipcMain.handle('tmux:status', async () => {
+    return getTmuxStatus();
   });
 
   ipcMain.handle('tmux:list', async () => {

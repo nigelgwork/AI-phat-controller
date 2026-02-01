@@ -15,7 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import {
-  useTmuxAvailable,
+  useTmuxStatus,
   useTmuxSessions,
   useCreateTmuxSession,
   useAttachTmuxSession,
@@ -37,7 +37,7 @@ export default function TmuxSessions() {
   const [newName, setNewName] = useState('');
 
   // Queries and mutations
-  const { data: isAvailable, isLoading: checkingAvailable } = useTmuxAvailable();
+  const { data: tmuxStatus, isLoading: checkingStatus } = useTmuxStatus();
   const { data: sessions = [], isLoading: loadingSessions, refetch } = useTmuxSessions();
   const createSession = useCreateTmuxSession();
   const attachSession = useAttachTmuxSession();
@@ -106,7 +106,7 @@ export default function TmuxSessions() {
     return new Date(date).toLocaleString();
   };
 
-  if (checkingAvailable) {
+  if (checkingStatus) {
     return (
       <div className="flex items-center justify-center h-64">
         <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
@@ -114,18 +114,45 @@ export default function TmuxSessions() {
     );
   }
 
-  if (!isAvailable) {
+  if (!tmuxStatus?.available) {
+    const getInstallCommand = () => {
+      switch (tmuxStatus?.platform) {
+        case 'windows-no-wsl':
+          return 'wsl --install';
+        case 'wsl':
+          return 'wsl -e sudo apt install tmux';
+        case 'macos':
+          return 'brew install tmux';
+        default:
+          return 'sudo apt install tmux';
+      }
+    };
+
+    const getTitle = () => {
+      if (tmuxStatus?.platform === 'windows-no-wsl') {
+        return 'WSL Required';
+      }
+      return 'tmux Not Available';
+    };
+
     return (
       <div className="flex flex-col items-center justify-center h-64 text-center">
         <AlertCircle className="w-16 h-16 text-yellow-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">tmux Not Available</h2>
-        <p className="text-slate-400 max-w-md">
-          tmux is not installed or not available in your PATH. Please install tmux to use this
-          feature.
+        <h2 className="text-xl font-bold text-white mb-2">{getTitle()}</h2>
+        <p className="text-slate-400 max-w-md mb-4">
+          {tmuxStatus?.message || 'tmux is not available on this system.'}
         </p>
-        <pre className="mt-4 px-4 py-2 bg-slate-800 rounded text-sm text-slate-300">
-          sudo apt install tmux
-        </pre>
+        <div className="bg-slate-800 rounded-lg p-4">
+          <p className="text-sm text-slate-400 mb-2">To install, run:</p>
+          <pre className="px-4 py-2 bg-slate-900 rounded text-sm text-cyan-400 font-mono">
+            {getInstallCommand()}
+          </pre>
+        </div>
+        {tmuxStatus?.platform === 'wsl' && (
+          <p className="text-xs text-slate-500 mt-4">
+            After installing, restart this application.
+          </p>
+        )}
       </div>
     );
   }

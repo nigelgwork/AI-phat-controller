@@ -349,6 +349,12 @@ export interface TmuxHistoryResult {
   error?: string;
 }
 
+export interface TmuxStatus {
+  available: boolean;
+  platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
+  message: string;
+}
+
 // Clawdbot personality types
 export type TraitLevel = 'low' | 'medium' | 'high';
 
@@ -380,8 +386,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getModeStatus: (): Promise<ModeStatus> => ipcRenderer.invoke('mode:status'),
 
   // Claude Code
-  executeClaudeCode: (message: string, systemPrompt?: string): Promise<ExecuteResult> =>
-    ipcRenderer.invoke('claude:execute', message, systemPrompt),
+  executeClaudeCode: (message: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult> =>
+    ipcRenderer.invoke('claude:execute', message, systemPrompt, projectPath),
 
   // Gas Town CLI
   executeGt: (args: string[]): Promise<ExecuteResult> => ipcRenderer.invoke('gt:execute', args),
@@ -603,6 +609,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // tmux Session Management
   isTmuxAvailable: (): Promise<boolean> =>
     ipcRenderer.invoke('tmux:available'),
+  getTmuxStatus: (): Promise<TmuxStatus> =>
+    ipcRenderer.invoke('tmux:status'),
   listTmuxSessions: (): Promise<TmuxSession[]> =>
     ipcRenderer.invoke('tmux:list'),
   createTmuxSession: (name: string, projectId?: string, cwd?: string): Promise<{ success: boolean; error?: string }> =>
@@ -887,6 +895,7 @@ declare global {
       onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
       // tmux Session Management
       isTmuxAvailable: () => Promise<boolean>;
+      getTmuxStatus: () => Promise<TmuxStatus>;
       listTmuxSessions: () => Promise<TmuxSession[]>;
       createTmuxSession: (name: string, projectId?: string, cwd?: string) => Promise<{ success: boolean; error?: string }>;
       attachTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
