@@ -55,6 +55,8 @@ import {
   updateUsageLimitConfig,
   getUsagePercentages,
 } from '../services/controller';
+import fs from 'fs';
+import path from 'path';
 import {
   getNtfyConfig,
   setNtfyConfig,
@@ -182,9 +184,9 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   });
 
   // Claude Code execution
-  ipcMain.handle('claude:execute', async (_, message: string, systemPrompt?: string, projectPath?: string) => {
+  ipcMain.handle('claude:execute', async (_, message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]) => {
     const executor = await getExecutor();
-    return executor.runClaude(message, systemPrompt || getSystemPrompt(), projectPath);
+    return executor.runClaude(message, systemPrompt || getSystemPrompt(), projectPath, imagePaths);
   });
 
   // Gas Town CLI execution
@@ -825,5 +827,54 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('clawdbot:getGreeting', () => {
     return getGreeting();
+  });
+
+  // ============================================
+  // Image handling for chat
+  // ============================================
+  ipcMain.handle('image:saveTemp', async (_, base64Data: string, filename: string) => {
+    try {
+      // Remove data URL prefix if present
+      const base64Content = base64Data.replace(/^data:image\/\w+;base64,/, '');
+
+      // Create temp directory in app data
+      const tempDir = path.join(app.getPath('userData'), 'temp-images');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Generate unique filename
+      const uniqueName = `${Date.now()}-${filename}`;
+      const filePath = path.join(tempDir, uniqueName);
+
+      // Write the file
+      fs.writeFileSync(filePath, Buffer.from(base64Content, 'base64'));
+
+      return { success: true, path: filePath };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle('image:cleanupTemp', async () => {
+    try {
+      const tempDir = path.join(app.getPath('userData'), 'temp-images');
+      if (fs.existsSync(tempDir)) {
+        // Delete files older than 1 hour
+        const files = fs.readdirSync(tempDir);
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
+
+        for (const file of files) {
+          const filePath = path.join(tempDir, file);
+          const stats = fs.statSync(filePath);
+          if (stats.mtimeMs < oneHourAgo) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
   });
 }

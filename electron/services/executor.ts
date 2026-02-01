@@ -52,7 +52,7 @@ export interface ModeStatus {
 // Abstract executor interface
 interface IExecutor {
   initialize(): Promise<void>;
-  runClaude(message: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult>;
+  runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]): Promise<ExecuteResult>;
   runGt(args: string[]): Promise<ExecuteResult>;
   runBd(args: string[]): Promise<ExecuteResult>;
 }
@@ -99,7 +99,7 @@ class WindowsExecutor implements IExecutor {
     }
   }
 
-  async runClaude(message: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult> {
+  async runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]): Promise<ExecuteResult> {
     const start = Date.now();
 
     if (!this.claudePath) {
@@ -119,12 +119,97 @@ class WindowsExecutor implements IExecutor {
     if (systemPrompt) {
       args.push('--system-prompt', systemPrompt);
     }
-    args.push(message);
+
+    // Add image files if provided
+    if (imagePaths && imagePaths.length > 0) {
+      for (const imagePath of imagePaths) {
+        args.push('--add', imagePath);
+      }
+    }
 
     // Use project path if provided, otherwise use gastown path
     const cwd = projectPath || this.gastownPath;
 
-    return this.spawnWithCwd(this.claudePath, args, cwd, { shell: true }, start);
+    // Pass message via stdin to avoid shell escaping issues
+    return this.spawnWithStdin(this.claudePath, args, message, cwd, start);
+  }
+
+  private spawnWithStdin(
+    cmd: string,
+    args: string[],
+    stdinData: string,
+    cwd: string,
+    start: number,
+    timeout = 120000
+  ): Promise<ExecuteResult> {
+    return new Promise((resolve) => {
+      const validCwd = getValidCwd(cwd);
+
+      console.log('[Executor] Running Claude with stdin in:', validCwd);
+      console.log('[Executor] Args:', args);
+
+      const child = spawn(cmd, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, GASTOWN_PATH: this.gastownPath },
+        cwd: validCwd,
+        windowsHide: true,
+        shell: true,  // Needed on Windows to find .cmd files
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (data) => { stdout += data; });
+      child.stderr?.on('data', (data) => { stderr += data; });
+
+      // Write message to stdin and close it
+      if (child.stdin) {
+        child.stdin.write(stdinData);
+        child.stdin.end();
+      }
+
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve({
+          success: false,
+          error: `Timeout after ${timeout / 1000} seconds`,
+          duration: Date.now() - start,
+        });
+      }, timeout);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        const duration = Date.now() - start;
+
+        console.log('[Executor] Claude exit code:', code);
+        console.log('[Executor] Claude stdout length:', stdout.length);
+        if (stderr) console.log('[Executor] Claude stderr:', stderr);
+
+        if (code === 0 || stdout.trim()) {
+          resolve({
+            success: true,
+            response: stdout.trim() || stderr.trim(),
+            duration,
+          });
+        } else {
+          resolve({
+            success: false,
+            error: stderr.trim() || `Exit code ${code}`,
+            duration,
+          });
+        }
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        console.log('[Executor] Claude spawn error:', err);
+        resolve({
+          success: false,
+          error: err.message,
+          duration: Date.now() - start,
+        });
+      });
+    });
   }
 
   private spawnWithCwd(
@@ -307,7 +392,7 @@ class WslExecutor implements IExecutor {
       .replace(/\\/g, '/');
   }
 
-  async runClaude(message: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult> {
+  async runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]): Promise<ExecuteResult> {
     const start = Date.now();
     const args = [
       '--print',
@@ -318,12 +403,97 @@ class WslExecutor implements IExecutor {
     if (systemPrompt) {
       args.push('--system-prompt', systemPrompt);
     }
-    args.push(message);
+
+    // Add image files if provided (convert to WSL paths)
+    if (imagePaths && imagePaths.length > 0) {
+      for (const imagePath of imagePaths) {
+        args.push('--add', this.toWslPath(imagePath));
+      }
+    }
 
     // Convert project path to WSL path if provided
     const wslCwd = projectPath ? this.toWslPath(projectPath) : this.wslGastownPath;
 
-    return this.wslExec('claude', args, start, 120000, wslCwd);
+    return this.wslExecWithStdin('claude', args, message, start, 120000, wslCwd);
+  }
+
+  private wslExecWithStdin(cmd: string, args: string[], stdinData: string, start: number, timeout = 120000, wslCwd?: string): Promise<ExecuteResult> {
+    return new Promise((resolve) => {
+      // Build argument list without the message (message goes to stdin)
+      const argsStr = args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
+
+      // If cwd is specified, wrap command with cd
+      const fullCmd = wslCwd
+        ? `cd "${wslCwd}" && ${cmd} ${argsStr}`
+        : `${cmd} ${argsStr}`;
+
+      const wslArgs = this.distro
+        ? ['-d', this.distro, 'bash', '-c', fullCmd]
+        : ['bash', '-c', fullCmd];
+
+      console.log('[Executor] WSL running:', fullCmd);
+
+      const child = spawn('wsl.exe', wslArgs, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          WSLENV: 'GASTOWN_PATH/p',
+          GASTOWN_PATH: this.gastownPath,
+        },
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (data) => { stdout += data; });
+      child.stderr?.on('data', (data) => { stderr += data; });
+
+      // Write message to stdin and close it
+      if (child.stdin) {
+        child.stdin.write(stdinData);
+        child.stdin.end();
+      }
+
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve({
+          success: false,
+          error: `Timeout after ${timeout / 1000} seconds`,
+          duration: Date.now() - start,
+        });
+      }, timeout);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        const duration = Date.now() - start;
+
+        console.log('[Executor] WSL Claude exit code:', code);
+        if (stderr) console.log('[Executor] WSL Claude stderr:', stderr);
+
+        if (code === 0 || stdout.trim()) {
+          resolve({
+            success: true,
+            response: stdout.trim() || stderr.trim(),
+            duration,
+          });
+        } else {
+          resolve({
+            success: false,
+            error: stderr.trim() || `Exit code ${code}`,
+            duration,
+          });
+        }
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        resolve({
+          success: false,
+          error: err.message,
+          duration: Date.now() - start,
+        });
+      });
+    });
   }
 
   async runGt(args: string[]): Promise<ExecuteResult> {

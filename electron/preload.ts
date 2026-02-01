@@ -386,8 +386,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getModeStatus: (): Promise<ModeStatus> => ipcRenderer.invoke('mode:status'),
 
   // Claude Code
-  executeClaudeCode: (message: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult> =>
-    ipcRenderer.invoke('claude:execute', message, systemPrompt, projectPath),
+  executeClaudeCode: (message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]): Promise<ExecuteResult> =>
+    ipcRenderer.invoke('claude:execute', message, systemPrompt, projectPath, imagePaths),
 
   // Gas Town CLI
   executeGt: (args: string[]): Promise<ExecuteResult> => ipcRenderer.invoke('gt:execute', args),
@@ -628,6 +628,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameTmuxSession: (oldName: string, newName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('tmux:rename', oldName, newName),
 
+  // Image handling for chat
+  saveImageToTemp: (base64Data: string, filename: string): Promise<{ success: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke('image:saveTemp', base64Data, filename),
+  cleanupTempImages: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('image:cleanupTemp'),
+
   // Clawdbot Personality Management
   getPersonalities: (): Promise<ClawdbotPersonality[]> =>
     ipcRenderer.invoke('clawdbot:getPersonalities'),
@@ -752,7 +758,7 @@ declare global {
       setMode: (mode: 'windows' | 'wsl') => Promise<void>;
       detectModes: () => Promise<ModeStatus>;
       getModeStatus: () => Promise<ModeStatus>;
-      executeClaudeCode: (message: string, systemPrompt?: string) => Promise<ExecuteResult>;
+      executeClaudeCode: (message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]) => Promise<ExecuteResult>;
       executeGt: (args: string[]) => Promise<ExecuteResult>;
       executeBd: (args: string[]) => Promise<ExecuteResult>;
       listBeads: () => Promise<unknown[]>;
@@ -904,6 +910,10 @@ declare global {
       sendTmuxKeys: (name: string, keys: string) => Promise<{ success: boolean; error?: string }>;
       updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }) => Promise<{ success: boolean }>;
       renameTmuxSession: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+      // Image handling for chat
+      saveImageToTemp: (base64Data: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+      cleanupTempImages: () => Promise<{ success: boolean; error?: string }>;
+
       // Clawdbot Personality Management
       getPersonalities: () => Promise<ClawdbotPersonality[]>;
       getPersonality: (id: string) => Promise<ClawdbotPersonality | undefined>;

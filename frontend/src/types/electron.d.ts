@@ -110,7 +110,7 @@ interface ElectronAPI {
   // Command execution
   executeGt: (args: string[]) => Promise<ExecuteResult>;
   executeBd: (args: string[]) => Promise<ExecuteResult>;
-  executeClaudeCode: (message: string, systemPrompt?: string) => Promise<ExecuteResult>;
+  executeClaudeCode: (message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[]) => Promise<ExecuteResult>;
 
   // Beads
   listBeads: (rig?: string) => Promise<Bead[]>;
@@ -309,6 +309,10 @@ interface ElectronAPI {
   sendTmuxKeys: (name: string, keys: string) => Promise<{ success: boolean; error?: string }>;
   updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }) => Promise<{ success: boolean }>;
   renameTmuxSession: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Image handling for chat
+  saveImageToTemp: (base64Data: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  cleanupTempImages: () => Promise<{ success: boolean; error?: string }>;
 
   // Clawdbot Personality Management
   getPersonalities: () => Promise<ClawdbotPersonality[]>;
