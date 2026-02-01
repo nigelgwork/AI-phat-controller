@@ -5,8 +5,6 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
-  XCircle,
-  Clock,
   Loader2,
   FileText,
   Wand2,
@@ -16,12 +14,11 @@ import {
   MousePointer,
   Keyboard,
   Eye,
-  Settings,
   Zap,
   Bot,
   Combine,
 } from 'lucide-react';
-import type { TestScenario, TestResult, TestStep, TestExecutionMode } from '../types/gastown';
+import type { TestScenario, TestResult, TestExecutionMode } from '../types/gastown';
 
 interface GuiTestPanelProps {
   className?: string;
@@ -133,11 +130,6 @@ export default function GuiTestPanel({ className = '' }: GuiTestPanelProps) {
       default:
         return <FileText size={14} />;
     }
-  };
-
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
   };
 
   if (isLoading) {

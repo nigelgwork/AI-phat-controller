@@ -67,10 +67,11 @@ const VOICE_COMMANDS: Record<string, string> = {
   'clear': 'clear',
 };
 
-interface SpeechInputProps {
+export interface SpeechInputProps {
   onTranscript?: (text: string, isFinal: boolean) => void;
   onFinalTranscript?: (text: string) => void;
   onCommand?: (command: string) => void;
+  onListeningChange?: (isListening: boolean) => void;
   disabled?: boolean;
   className?: string;
   placeholder?: string;
@@ -80,6 +81,7 @@ export default function SpeechInput({
   onTranscript,
   onFinalTranscript,
   onCommand,
+  onListeningChange,
   disabled = false,
   className = '',
   placeholder,
@@ -95,6 +97,11 @@ export default function SpeechInput({
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognitionAPI);
   }, []);
+
+  // Notify parent of listening state changes
+  useEffect(() => {
+    onListeningChange?.(isListening);
+  }, [isListening, onListeningChange]);
 
   // Initialize speech recognition
   const initRecognition = useCallback(() => {
@@ -285,6 +292,10 @@ export function useSpeechInput(options?: {
     setTranscript(text);
   }, []);
 
+  const handleListeningChange = useCallback((listening: boolean) => {
+    setIsListening(listening);
+  }, []);
+
   return {
     transcript,
     isListening,
@@ -295,6 +306,7 @@ export function useSpeechInput(options?: {
         onTranscript={handleTranscript}
         onFinalTranscript={handleFinalTranscript}
         onCommand={options?.onCommand}
+        onListeningChange={handleListeningChange}
       />
     ),
   };

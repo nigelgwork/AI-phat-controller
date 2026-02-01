@@ -17,11 +17,14 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
+  AlertCircle,
+  Play,
+  Eye,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import CollapsibleHelp from '../components/CollapsibleHelp';
-import type { ProjectBrief, DeepDivePlan } from '../types/gastown';
+import type { ProjectBrief, DeepDivePlan, DeepDiveTask } from '../types/gastown';
 
 interface Project {
   id: string;
@@ -236,7 +239,7 @@ function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => v
 
   // Generate deep dive mutation
   const generateDeepDiveMutation = useMutation({
-    mutationFn: (focus?: string) => window.electronAPI!.generateDeepDivePlan(project.id, project.path, project.name, focus) as Promise<DeepDivePlan>,
+    mutationFn: (focus: string | undefined = undefined) => window.electronAPI!.generateDeepDivePlan(project.id, project.path, project.name, focus) as Promise<DeepDivePlan>,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deep-dive', project.id] });
     },
@@ -357,13 +360,13 @@ function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => v
               Loading plan...
             </div>
           ) : deepDive ? (
-            <DeepDivePlanView plan={deepDive as DeepDivePlan} onRegenerate={() => generateDeepDiveMutation.mutate()} isRegenerating={generateDeepDiveMutation.isPending} />
+            <DeepDivePlanView plan={deepDive as DeepDivePlan} onRegenerate={() => generateDeepDiveMutation.mutate(undefined)} isRegenerating={generateDeepDiveMutation.isPending} />
           ) : (
             <div className="text-center py-4">
               <Compass className="w-8 h-8 text-slate-500 mx-auto mb-2" />
               <p className="text-slate-400 text-sm mb-3">No deep dive plan created yet</p>
               <button
-                onClick={() => generateDeepDiveMutation.mutate()}
+                onClick={() => generateDeepDiveMutation.mutate(undefined)}
                 disabled={generateDeepDiveMutation.isPending}
                 className="flex items-center gap-2 mx-auto px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-slate-700 text-white text-sm rounded-lg transition-colors"
               >
@@ -485,19 +488,139 @@ function ProjectBriefView({ brief, onRegenerate, isRegenerating }: { brief: Proj
 
 function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDivePlan; onRegenerate: () => void; isRegenerating: boolean }) {
   const queryClient = useQueryClient();
+  const [executingTaskId, setExecutingTaskId] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [approvalPending, setApprovalPending] = useState<{ taskId: string; reason: string; output: string } | null>(null);
+
+  const executeMutation = useMutation({
+    mutationFn: async ({ taskId }: { taskId: string }) => {
+      setExecutingTaskId(taskId);
+      const result = await window.electronAPI!.executeDeepDiveTask(plan.projectId, taskId);
+      return { taskId, result };
+    },
+    onSuccess: ({ taskId, result }) => {
+      setExecutingTaskId(null);
+      if (result.requiresApproval) {
+        setApprovalPending({
+          taskId,
+          reason: result.approvalReason || 'Approval required',
+          output: result.output || '',
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
+    },
+    onError: () => {
+      setExecutingTaskId(null);
+      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
+    },
+  });
 
   const updateMutation = useMutation({
-    mutationFn: (updates: { taskId: string; status: 'pending' | 'in_progress' | 'completed' }) =>
+    mutationFn: (updates: { taskId: string; status: 'pending' | 'in_progress' | 'completed' | 'failed' }) =>
       window.electronAPI!.updateDeepDivePlan(plan.projectId, { taskUpdates: [updates] }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
     },
   });
 
+  const handleApprove = () => {
+    if (approvalPending) {
+      updateMutation.mutate({ taskId: approvalPending.taskId, status: 'completed' });
+      setApprovalPending(null);
+    }
+  };
+
+  const handleReject = () => {
+    if (approvalPending) {
+      updateMutation.mutate({ taskId: approvalPending.taskId, status: 'pending' });
+      setApprovalPending(null);
+    }
+  };
+
   const progress = plan.totalTasks > 0 ? (plan.completedTasks / plan.totalTasks) * 100 : 0;
+
+  const renderTaskButton = (task: DeepDiveTask) => {
+    const isExecuting = executingTaskId === task.id;
+
+    if (isExecuting) {
+      return (
+        <div className="w-5 h-5 rounded border border-cyan-500 bg-cyan-500/20 flex items-center justify-center">
+          <Loader2 size={12} className="text-cyan-400 animate-spin" />
+        </div>
+      );
+    }
+
+    switch (task.status) {
+      case 'completed':
+        return (
+          <div className="w-5 h-5 rounded bg-green-500 flex items-center justify-center">
+            <Check size={12} className="text-white" />
+          </div>
+        );
+      case 'failed':
+        return (
+          <button
+            onClick={() => executeMutation.mutate({ taskId: task.id })}
+            disabled={executeMutation.isPending}
+            className="w-5 h-5 rounded bg-red-500 flex items-center justify-center hover:bg-red-600 transition-colors"
+            title={task.executionError || 'Task failed - click to retry'}
+          >
+            <X size={12} className="text-white" />
+          </button>
+        );
+      case 'in_progress':
+        return (
+          <div className="w-5 h-5 rounded border border-cyan-500 bg-cyan-500/20 flex items-center justify-center">
+            <Loader2 size={12} className="text-cyan-400 animate-spin" />
+          </div>
+        );
+      default: // pending
+        return (
+          <button
+            onClick={() => executeMutation.mutate({ taskId: task.id })}
+            disabled={executeMutation.isPending}
+            className="w-5 h-5 rounded border border-slate-500 hover:border-cyan-400 hover:bg-cyan-500/20 flex items-center justify-center transition-colors group"
+            title="Click to execute this task"
+          >
+            <Play size={10} className="text-slate-500 group-hover:text-cyan-400" />
+          </button>
+        );
+    }
+  };
 
   return (
     <div className="space-y-3">
+      {/* Approval Modal */}
+      {approvalPending && (
+        <div className="p-4 bg-yellow-500/10 border border-yellow-500/50 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-yellow-500 flex-shrink-0 mt-0.5" size={18} />
+            <div className="flex-1">
+              <h5 className="text-sm font-medium text-yellow-400">Approval Required</h5>
+              <p className="text-xs text-slate-400 mt-1">{approvalPending.reason}</p>
+              <div className="mt-2 p-2 bg-slate-800 rounded text-xs text-slate-300 max-h-32 overflow-y-auto font-mono">
+                {approvalPending.output.substring(0, 500)}
+                {approvalPending.output.length > 500 && '...'}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={handleApprove}
+                  className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded transition-colors"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={handleReject}
+                  className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white text-xs rounded transition-colors"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-white">Deep Dive Plan</h4>
         <div className="flex items-center gap-2">
@@ -546,35 +669,59 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
             </div>
             <div className="divide-y divide-slate-700">
               {phase.tasks.map((task) => (
-                <div key={task.id} className="px-3 py-2 flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      const nextStatus = task.status === 'pending' ? 'in_progress' :
-                                        task.status === 'in_progress' ? 'completed' : 'pending';
-                      updateMutation.mutate({ taskId: task.id, status: nextStatus });
-                    }}
-                    disabled={updateMutation.isPending}
-                    className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
-                      task.status === 'completed' ? 'bg-green-500 border-green-500' :
-                      task.status === 'in_progress' ? 'bg-cyan-500 border-cyan-500' :
-                      'border-slate-500 hover:border-slate-400'
-                    }`}
-                  >
-                    {task.status === 'completed' && <Check size={10} className="text-white" />}
-                    {task.status === 'in_progress' && <Loader2 size={10} className="text-white animate-spin" />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm ${task.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-                      {task.title}
-                    </p>
+                <div key={task.id} className="group">
+                  <div className="px-3 py-2 flex items-center gap-3">
+                    {renderTaskButton(task)}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${
+                        task.status === 'completed' ? 'text-slate-500 line-through' :
+                        task.status === 'failed' ? 'text-red-400' :
+                        'text-slate-300'
+                      }`}>
+                        {task.title}
+                      </p>
+                      {task.status === 'failed' && task.executionError && (
+                        <p className="text-xs text-red-400/70 mt-0.5 truncate" title={task.executionError}>
+                          {task.executionError}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(task.executionOutput || task.executionError) && (
+                        <button
+                          onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                          className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                          title="View execution output"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      )}
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        task.estimatedComplexity === 'high' ? 'bg-red-500/20 text-red-400' :
+                        task.estimatedComplexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-green-500/20 text-green-400'
+                      }`}>
+                        {task.estimatedComplexity}
+                      </span>
+                    </div>
                   </div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${
-                    task.estimatedComplexity === 'high' ? 'bg-red-500/20 text-red-400' :
-                    task.estimatedComplexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                    'bg-green-500/20 text-green-400'
-                  }`}>
-                    {task.estimatedComplexity}
-                  </span>
+                  {/* Expanded output view */}
+                  {expandedTaskId === task.id && (task.executionOutput || task.executionError) && (
+                    <div className="px-3 pb-3">
+                      <div className="p-2 bg-slate-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
+                        {task.executionError ? (
+                          <pre className="text-red-400 whitespace-pre-wrap">{task.executionError}</pre>
+                        ) : (
+                          <pre className="text-slate-300 whitespace-pre-wrap">{task.executionOutput}</pre>
+                        )}
+                      </div>
+                      {task.executedAt && (
+                        <p className="text-xs text-slate-500 mt-1">
+                          Executed: {new Date(task.executedAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

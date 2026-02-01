@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Sparkles,
   FolderPlus,
-  GitBranch,
   Code,
   Terminal,
   BookOpen,
@@ -14,7 +13,6 @@ import {
   Check,
   ChevronRight,
   Loader2,
-  Mic,
   X,
   Plus,
 } from 'lucide-react';

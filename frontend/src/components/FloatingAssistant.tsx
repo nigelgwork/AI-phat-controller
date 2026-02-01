@@ -50,7 +50,7 @@ export default function FloatingAssistant() {
   const [isDragging, setIsDragging] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: currentPersonality } = useCurrentPersonality();
@@ -535,36 +535,48 @@ export default function FloatingAssistant() {
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="p-3 border-t border-slate-700">
-        <div className="flex gap-2">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept="image/*"
-            multiple
-            className="hidden"
-          />
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          accept="image/*"
+          multiple
+          className="hidden"
+        />
+        <div className="flex gap-2 items-end">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors flex-shrink-0 self-end mb-0.5"
             title="Attach image (or paste from clipboard)"
           >
             <Paperclip className="w-4 h-4" />
           </button>
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Clawdbot..."
-            className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+            placeholder="Ask Clawdbot... (Shift+Enter for new line)"
+            className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
+            rows={1}
             disabled={loading}
+            style={{ height: 'auto' }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+            }}
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg transition-colors"
+            className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0 self-end"
           >
             <Send className="w-4 h-4" />
           </button>

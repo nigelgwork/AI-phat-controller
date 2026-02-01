@@ -413,6 +413,17 @@ export interface ProjectBrief {
   };
 }
 
+export interface DeepDiveTask {
+  id: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  estimatedComplexity: 'low' | 'medium' | 'high';
+  executionOutput?: string;
+  executionError?: string;
+  executedAt?: string;
+}
+
 export interface DeepDivePlan {
   id: string;
   projectId: string;
@@ -423,13 +434,7 @@ export interface DeepDivePlan {
     id: string;
     name: string;
     description: string;
-    tasks: Array<{
-      id: string;
-      title: string;
-      description: string;
-      status: 'pending' | 'in_progress' | 'completed';
-      estimatedComplexity: 'low' | 'medium' | 'high';
-    }>;
+    tasks: DeepDiveTask[];
   }>;
   totalTasks: number;
   completedTasks: number;

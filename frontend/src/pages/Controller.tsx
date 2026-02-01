@@ -17,13 +17,11 @@ import {
   Send,
   Loader2,
   MessageSquare,
-  ChevronRight,
   Plus,
   Trash2,
-  Settings2,
   Cpu,
 } from 'lucide-react';
-import type { ControllerState, ApprovalRequest, ActionLog, ProgressState, ConversationSession, ConversationEntry } from '../types/gastown';
+import type { ControllerState, ApprovalRequest, ActionLog } from '../types/gastown';
 import ApprovalModal from '../components/ApprovalModal';
 import SpeechInput from '../components/SpeechInput';
 

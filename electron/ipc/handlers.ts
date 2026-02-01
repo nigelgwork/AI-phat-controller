@@ -78,6 +78,7 @@ import {
   getDeepDivePlan,
   updateDeepDivePlan,
   deleteDeepDivePlan,
+  executeDeepDiveTask,
   scaffoldNewProject,
   NewProjectSpec,
 } from '../services/project-briefs';
@@ -147,10 +148,51 @@ import {
   ClawdbotPersonality,
 } from '../services/clawdbot';
 
-// System prompt for Claude Code
+// System prompt for Claude Code (ClawdBot)
 function getSystemPrompt(): string {
   const gastownPath = settings.get('gastownPath');
-  const basePrompt = `You are the AI Controller for Gas Town, a multi-agent orchestration system. You have access to the Gas Town workspace at ${gastownPath}. Available CLI tools: gt (Gas Town CLI for managing rigs, convoys, agents) and bd (Beads CLI for managing work items). Common commands: gt rig list, gt convoy list, bd list, bd ready. Help the user manage their multi-agent coding workflow.`;
+
+  const basePrompt = `You are Clawdbot, the AI assistant for the AI Fat Controller desktop application.
+
+## About AI Fat Controller
+AI Fat Controller is an Electron desktop app built with React/TypeScript that helps users manage and orchestrate AI coding projects. It provides:
+
+### Core Features
+1. **Projects Management** - Add, discover, and track git repositories
+2. **Project Briefs** - AI-generated summaries of project structure, tech stack, and key files
+3. **Deep Dive Plans** - AI-generated implementation plans with executable tasks
+   - Tasks can be executed by clicking the play button
+   - Execution uses Claude Code to perform the task
+   - Risky operations (git push, refactoring) require approval
+4. **Controller** - An autonomous AI project manager that processes tasks
+5. **Chat Interface** - Where users talk to you (Clawdbot)
+6. **Settings** - Configure execution mode (Windows/WSL), notifications, MCP servers
+
+### Pages in the App
+- **Dashboard** - Overview of projects, sessions, and beads
+- **Projects** - List projects, generate briefs, create deep dive plans
+- **Beads** - Work item tracking (issues)
+- **Controller** - Phat Controller for autonomous task processing
+- **Sessions** - tmux session management for Claude Code instances
+- **GUI Testing** - Visual testing capabilities
+- **Settings** - App configuration
+
+### Technical Details
+- Built with Electron + React + TypeScript + Tailwind CSS
+- Uses Claude Code CLI for AI execution
+- Supports Windows native and WSL execution modes
+- Stores data using electron-store
+- Gas Town workspace path: ${gastownPath}
+
+### What You Can Help With
+- Explaining how features work in the app
+- Guiding users through creating projects and briefs
+- Helping with deep dive plan creation and execution
+- Troubleshooting issues with Claude Code integration
+- General coding assistance within selected project context
+- Answering questions about the app's architecture
+
+When a project context is selected, you have access to information about that specific project.`;
 
   // Apply personality if available
   const personality = getCurrentPersonality();
@@ -158,7 +200,7 @@ function getSystemPrompt(): string {
     return buildSystemPrompt(personality, basePrompt);
   }
 
-  return basePrompt + ' Be concise and helpful.';
+  return basePrompt + '\n\nBe helpful, concise, and friendly.';
 }
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
@@ -596,6 +638,10 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('deepdive:delete', (_, projectId: string) => {
     return deleteDeepDivePlan(projectId);
+  });
+
+  ipcMain.handle('deepdive:executeTask', async (_, projectId: string, taskId: string) => {
+    return executeDeepDiveTask(projectId, taskId);
   });
 
   // New Project handlers

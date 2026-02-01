@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle, Bell, Send, Gauge, AlertTriangle, Server } from 'lucide-react';
+import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle, Bell, Send, Gauge, AlertTriangle } from 'lucide-react';
 import type { NtfyConfig, UsageLimitConfig } from '../types/gastown';
 import MCPServerConfigPanel from '../components/MCPServerConfig';
 

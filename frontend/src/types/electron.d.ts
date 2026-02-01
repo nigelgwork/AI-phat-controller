@@ -253,8 +253,9 @@ interface ElectronAPI {
   // Deep Dive Plans
   generateDeepDivePlan: (projectId: string, projectPath: string, projectName: string, focus?: string) => Promise<DeepDivePlan>;
   getDeepDivePlan: (projectId: string) => Promise<DeepDivePlan | null>;
-  updateDeepDivePlan: (projectId: string, updates: { status?: 'draft' | 'approved' | 'in_progress' | 'completed'; taskUpdates?: Array<{ taskId: string; status: 'pending' | 'in_progress' | 'completed' }> }) => Promise<DeepDivePlan | null>;
+  updateDeepDivePlan: (projectId: string, updates: { status?: 'draft' | 'approved' | 'in_progress' | 'completed'; taskUpdates?: Array<{ taskId: string; status: 'pending' | 'in_progress' | 'completed' | 'failed' }> }) => Promise<DeepDivePlan | null>;
   deleteDeepDivePlan: (projectId: string) => Promise<boolean>;
+  executeDeepDiveTask: (projectId: string, taskId: string) => Promise<{ success: boolean; output?: string; error?: string; requiresApproval?: boolean; approvalReason?: string }>;
 
   // New Project
   scaffoldNewProject: (targetPath: string, spec: NewProjectSpec) => Promise<{ success: boolean; error?: string }>;

@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Settings,
   Plug,
   PlugZap,
   ChevronDown,

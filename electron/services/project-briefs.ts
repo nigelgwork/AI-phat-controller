@@ -26,6 +26,17 @@ export interface ProjectBrief {
   };
 }
 
+export interface DeepDiveTask {
+  id: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  estimatedComplexity: 'low' | 'medium' | 'high';
+  executionOutput?: string;
+  executionError?: string;
+  executedAt?: string;
+}
+
 export interface DeepDivePlan {
   id: string;
   projectId: string;
@@ -36,13 +47,7 @@ export interface DeepDivePlan {
     id: string;
     name: string;
     description: string;
-    tasks: Array<{
-      id: string;
-      title: string;
-      description: string;
-      status: 'pending' | 'in_progress' | 'completed';
-      estimatedComplexity: 'low' | 'medium' | 'high';
-    }>;
+    tasks: DeepDiveTask[];
   }>;
   totalTasks: number;
   completedTasks: number;
@@ -579,7 +584,13 @@ export function getDeepDivePlan(projectId: string): DeepDivePlan | null {
 export function updateDeepDivePlan(
   projectId: string,
   updates: Partial<Pick<DeepDivePlan, 'status'>> & {
-    taskUpdates?: Array<{ taskId: string; status: 'pending' | 'in_progress' | 'completed' }>;
+    taskUpdates?: Array<{
+      taskId: string;
+      status: 'pending' | 'in_progress' | 'completed' | 'failed';
+      executionOutput?: string;
+      executionError?: string;
+      executedAt?: string;
+    }>;
   }
 ): DeepDivePlan | null {
   const plans = getStore().get('deepDivePlans');
@@ -597,6 +608,15 @@ export function updateDeepDivePlan(
         const task = phase.tasks.find(t => t.id === taskUpdate.taskId);
         if (task) {
           task.status = taskUpdate.status;
+          if (taskUpdate.executionOutput !== undefined) {
+            task.executionOutput = taskUpdate.executionOutput;
+          }
+          if (taskUpdate.executionError !== undefined) {
+            task.executionError = taskUpdate.executionError;
+          }
+          if (taskUpdate.executedAt !== undefined) {
+            task.executedAt = taskUpdate.executedAt;
+          }
           break;
         }
       }
@@ -624,6 +644,175 @@ export function deleteDeepDivePlan(projectId: string): boolean {
     return true;
   }
   return false;
+}
+
+// Action classification for determining if approval is needed
+interface ActionClassification {
+  requiresApproval: boolean;
+  reason?: string;
+}
+
+function classifyDeepDiveAction(taskTitle: string, taskDescription: string, claudeResponse: string): ActionClassification {
+  const combinedText = `${taskTitle} ${taskDescription} ${claudeResponse}`.toLowerCase();
+
+  // Check for risky operations that need approval
+  const riskyPatterns = [
+    { pattern: /git push|push to remote|push to origin/, reason: 'Git push operation' },
+    { pattern: /refactor|rewrite|major changes|restructure/, reason: 'Large-scale refactoring' },
+    { pattern: /delete.*file|remove.*file|rm -rf/, reason: 'File deletion' },
+    { pattern: /drop.*table|delete.*database|truncate/, reason: 'Database modification' },
+    { pattern: /deploy|production|release/, reason: 'Deployment operation' },
+  ];
+
+  for (const { pattern, reason } of riskyPatterns) {
+    if (pattern.test(combinedText)) {
+      return { requiresApproval: true, reason };
+    }
+  }
+
+  return { requiresApproval: false };
+}
+
+// Execute a deep dive task
+export interface ExecuteDeepDiveTaskResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+  requiresApproval?: boolean;
+  approvalReason?: string;
+}
+
+export async function executeDeepDiveTask(
+  projectId: string,
+  taskId: string
+): Promise<ExecuteDeepDiveTaskResult> {
+  // Get the plan
+  const plan = getDeepDivePlan(projectId);
+  if (!plan) {
+    return { success: false, error: 'Deep dive plan not found' };
+  }
+
+  // Find the task and its phase
+  let targetTask: DeepDiveTask | null = null;
+  let targetPhase: { id: string; name: string; description: string } | null = null;
+
+  for (const phase of plan.phases) {
+    const task = phase.tasks.find(t => t.id === taskId);
+    if (task) {
+      targetTask = task;
+      targetPhase = { id: phase.id, name: phase.name, description: phase.description };
+      break;
+    }
+  }
+
+  if (!targetTask || !targetPhase) {
+    return { success: false, error: 'Task not found in plan' };
+  }
+
+  // Get project brief for context
+  const brief = getProjectBrief(projectId);
+
+  // Update task status to in_progress
+  updateDeepDivePlan(projectId, {
+    taskUpdates: [{
+      taskId,
+      status: 'in_progress',
+    }],
+  });
+
+  try {
+    const executor = await getExecutor();
+
+    // Build the prompt with full context
+    let prompt = `## Project Context
+Project: ${plan.projectName}
+Path: ${brief?.projectPath || 'Unknown'}
+Tech Stack: ${brief?.techStack?.join(', ') || 'Unknown'}
+
+## Current Phase
+${targetPhase.name}: ${targetPhase.description}
+
+## Task to Execute
+**${targetTask.title}**
+
+${targetTask.description}
+
+Please complete this task. Work within the project${brief?.projectPath ? ` at ${brief.projectPath}` : ''}.
+Be thorough but concise in your response. If you make changes, summarize what was done.`;
+
+    const systemPrompt = `You are an AI assistant executing tasks from a deep dive plan.
+Your job is to complete the given task efficiently and report what was accomplished.
+If the task requires clarification or cannot be completed, explain why.
+Focus on the specific task - don't go beyond its scope.`;
+
+    // Execute with Claude
+    const result = await executor.runClaude(prompt, systemPrompt, brief?.projectPath);
+
+    if (!result.success) {
+      // Update task as failed
+      updateDeepDivePlan(projectId, {
+        taskUpdates: [{
+          taskId,
+          status: 'failed',
+          executionError: result.error || 'Execution failed',
+          executedAt: new Date().toISOString(),
+        }],
+      });
+
+      return {
+        success: false,
+        error: result.error || 'Task execution failed',
+      };
+    }
+
+    const response = result.response || '';
+
+    // Check if the action requires approval
+    const classification = classifyDeepDiveAction(targetTask.title, targetTask.description, response);
+
+    if (classification.requiresApproval) {
+      // Keep task in_progress, return approval needed
+      return {
+        success: true,
+        output: response,
+        requiresApproval: true,
+        approvalReason: classification.reason,
+      };
+    }
+
+    // Task completed successfully
+    updateDeepDivePlan(projectId, {
+      taskUpdates: [{
+        taskId,
+        status: 'completed',
+        executionOutput: response,
+        executedAt: new Date().toISOString(),
+      }],
+    });
+
+    return {
+      success: true,
+      output: response,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Update task as failed
+    updateDeepDivePlan(projectId, {
+      taskUpdates: [{
+        taskId,
+        status: 'failed',
+        executionError: errorMessage,
+        executedAt: new Date().toISOString(),
+      }],
+    });
+
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
 }
 
 // Generate new project structure

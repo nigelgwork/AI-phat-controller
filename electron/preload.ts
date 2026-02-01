@@ -535,6 +535,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('deepdive:update', projectId, updates),
   deleteDeepDivePlan: (projectId: string): Promise<boolean> =>
     ipcRenderer.invoke('deepdive:delete', projectId),
+  executeDeepDiveTask: (projectId: string, taskId: string): Promise<{ success: boolean; output?: string; error?: string; requiresApproval?: boolean; approvalReason?: string }> =>
+    ipcRenderer.invoke('deepdive:executeTask', projectId, taskId),
 
   // New Project
   scaffoldNewProject: (targetPath: string, spec: { name: string; description: string; type: string; techStack: string[]; features: string[] }): Promise<{ success: boolean; error?: string }> =>
@@ -866,6 +868,7 @@ declare global {
       getDeepDivePlan: (projectId: string) => Promise<unknown>;
       updateDeepDivePlan: (projectId: string, updates: { status?: string; taskUpdates?: Array<{ taskId: string; status: string }> }) => Promise<unknown>;
       deleteDeepDivePlan: (projectId: string) => Promise<boolean>;
+      executeDeepDiveTask: (projectId: string, taskId: string) => Promise<{ success: boolean; output?: string; error?: string; requiresApproval?: boolean; approvalReason?: string }>;
       // New Project
       scaffoldNewProject: (targetPath: string, spec: { name: string; description: string; type: string; techStack: string[]; features: string[] }) => Promise<{ success: boolean; error?: string }>;
       // Screenshot capture and analysis
