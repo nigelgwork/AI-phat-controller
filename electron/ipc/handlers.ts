@@ -79,6 +79,8 @@ import {
   updateDeepDivePlan,
   deleteDeepDivePlan,
   executeDeepDiveTask,
+  convertDeepDiveToTasks,
+  convertSingleTaskToProjectTask,
   scaffoldNewProject,
   NewProjectSpec,
 } from '../services/project-briefs';
@@ -659,6 +661,15 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
       });
     }
     return { cancelled };
+  });
+
+  // Convert Deep Dive tasks to project tasks
+  ipcMain.handle('deepdive:convertToTasks', (_, projectId: string, options?: { phaseIds?: string[]; taskIds?: string[] }) => {
+    return convertDeepDiveToTasks(projectId, options);
+  });
+
+  ipcMain.handle('deepdive:convertTaskToProjectTask', (_, projectId: string, taskId: string) => {
+    return convertSingleTaskToProjectTask(projectId, taskId);
   });
 
   // New Project handlers

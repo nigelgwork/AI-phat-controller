@@ -539,6 +539,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('deepdive:executeTask', projectId, taskId),
   cancelDeepDiveTask: (projectId: string, taskId: string): Promise<{ cancelled: boolean }> =>
     ipcRenderer.invoke('deepdive:cancelTask', projectId, taskId),
+  convertDeepDiveToTasks: (projectId: string, options?: { phaseIds?: string[]; taskIds?: string[] }): Promise<{ success: boolean; tasksCreated: number; error?: string }> =>
+    ipcRenderer.invoke('deepdive:convertToTasks', projectId, options),
+  convertDeepDiveTaskToProjectTask: (projectId: string, taskId: string): Promise<{ success: boolean; tasksCreated: number; error?: string }> =>
+    ipcRenderer.invoke('deepdive:convertTaskToProjectTask', projectId, taskId),
 
   // New Project
   scaffoldNewProject: (targetPath: string, spec: { name: string; description: string; type: string; techStack: string[]; features: string[] }): Promise<{ success: boolean; error?: string }> =>
@@ -881,6 +885,9 @@ declare global {
       updateDeepDivePlan: (projectId: string, updates: { status?: string; taskUpdates?: Array<{ taskId: string; status: string }> }) => Promise<unknown>;
       deleteDeepDivePlan: (projectId: string) => Promise<boolean>;
       executeDeepDiveTask: (projectId: string, taskId: string) => Promise<{ success: boolean; output?: string; error?: string; requiresApproval?: boolean; approvalReason?: string }>;
+      cancelDeepDiveTask: (projectId: string, taskId: string) => Promise<{ cancelled: boolean }>;
+      convertDeepDiveToTasks: (projectId: string, options?: { phaseIds?: string[]; taskIds?: string[] }) => Promise<{ success: boolean; tasksCreated: number; error?: string }>;
+      convertDeepDiveTaskToProjectTask: (projectId: string, taskId: string) => Promise<{ success: boolean; tasksCreated: number; error?: string }>;
       // New Project
       scaffoldNewProject: (targetPath: string, spec: { name: string; description: string; type: string; techStack: string[]; features: string[] }) => Promise<{ success: boolean; error?: string }>;
       // Screenshot capture and analysis

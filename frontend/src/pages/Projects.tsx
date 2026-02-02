@@ -489,439 +489,50 @@ function ProjectBriefView({ brief, onRegenerate, isRegenerating }: { brief: Proj
   );
 }
 
-interface ExecutorLog {
-  timestamp: string;
-  type: string;
-  message: string;
-  bytes?: number;
-}
-
 function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDivePlan; onRegenerate: () => void; isRegenerating: boolean }) {
   const queryClient = useQueryClient();
-  const [executingTaskId, setExecutingTaskId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [approvalPending, setApprovalPending] = useState<{ taskId: string; reason: string; output: string } | null>(null);
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const startTimeRef = useRef<number | null>(null);
-  const [executionLogs, setExecutionLogs] = useState<ExecutorLog[]>([]);
-  const [showLogs, setShowLogs] = useState(true);
-  const [outputBytes, setOutputBytes] = useState(0);
-  const [lastActivity, setLastActivity] = useState<string>('');
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [addedTaskIds, setAddedTaskIds] = useState<Set<string>>(new Set());
 
-  // Timer for elapsed time
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (executingTaskId) {
-      if (!startTimeRef.current) {
-        startTimeRef.current = Date.now();
-      }
-      interval = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000));
-      }, 1000);
-    } else {
-      startTimeRef.current = null;
-      setElapsedTime(0);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [executingTaskId]);
-
-  // Listen to executor logs during execution
-  useEffect(() => {
-    if (!executingTaskId) {
-      return;
-    }
-
-    // Clear logs when starting new execution
-    setExecutionLogs([]);
-    setOutputBytes(0);
-    setLastActivity('Starting...');
-
-    const unsubscribe = window.electronAPI?.onExecutorLog((log) => {
-      const now = new Date().toLocaleTimeString();
-
-      // Parse the log type and create a meaningful message
-      let message = '';
-      let bytes = 0;
-
-      switch (log.type) {
-        case 'spawn':
-        case 'spawn-command':
-          message = `Starting Claude Code...`;
-          setLastActivity('Initializing');
-          break;
-        case 'wsl-spawn':
-          message = `Starting Claude Code (WSL)...`;
-          setLastActivity('Initializing');
-          break;
-        case 'tool-call': {
-          // Structured tool call from JSON stream
-          const tool = log.tool as string;
-          const desc = log.description as string || '';
-          message = `[${tool}] ${desc}`;
-
-          // Set activity based on tool
-          const toolActivities: Record<string, string> = {
-            'Read': 'Reading file',
-            'Edit': 'Editing file',
-            'Write': 'Writing file',
-            'Grep': 'Searching code',
-            'Glob': 'Finding files',
-            'Bash': 'Running command',
-            'Task': 'Spawning agent',
-            'WebFetch': 'Fetching URL',
-            'WebSearch': 'Searching web',
-          };
-          setLastActivity(toolActivities[tool] || `Using ${tool}`);
-          break;
-        }
-        case 'tool-result': {
-          // Tool execution result
-          const preview = log.preview as string || '(completed)';
-          const isErr = log.isError as boolean;
-          message = isErr ? `[error] ${preview}` : `→ ${preview}`;
-          break;
-        }
-        case 'text': {
-          // Claude's text response
-          const text = log.text as string || '';
-          if (text.trim()) {
-            message = text;
-            setLastActivity('Responding');
-          }
-          break;
-        }
-        case 'stdout':
-        case 'wsl-stdout': {
-          // Legacy format fallback
-          const chunk = (log.chunk as string) || '';
-          bytes = (log.totalLength as number) || 0;
-          setOutputBytes(bytes);
-          if (chunk.trim()) {
-            message = chunk.length > 100 ? chunk.substring(0, 100) + '...' : chunk;
-          }
-          break;
-        }
-        case 'stderr':
-        case 'wsl-stderr': {
-          const errChunk = (log.chunk as string) || '';
-          if (errChunk.trim()) {
-            message = `[stderr] ${errChunk.length > 80 ? errChunk.substring(0, 80) + '...' : errChunk}`;
-          }
-          break;
-        }
-        case 'idle-timeout':
-        case 'wsl-idle-timeout':
-          message = `Idle timeout - no activity for ${(log.idleTime as number) / 1000}s`;
-          setLastActivity('Timed out');
-          break;
-        case 'complete':
-        case 'wsl-complete': {
-          const code = log.code as number;
-          const duration = ((log.duration as number) / 1000).toFixed(1);
-          const cost = log.cost as number | undefined;
-          const turns = log.numTurns as number | undefined;
-          message = `Completed (${duration}s${turns ? `, ${turns} turns` : ''}${cost ? `, $${cost.toFixed(4)}` : ''})`;
-          setLastActivity(code === 0 ? 'Completed' : 'Failed');
-          break;
-        }
-        default:
-          // Skip unknown types
-          break;
-      }
-
-      if (message) {
-        setExecutionLogs(prev => [...prev.slice(-50), { timestamp: now, type: log.type, message, bytes }]);
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [executingTaskId]);
-
-  // Auto-scroll logs
-  useEffect(() => {
-    if (logsEndRef.current && showLogs) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [executionLogs, showLogs]);
-
-  const formatElapsedTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-  };
-
-  const executeMutation = useMutation({
-    mutationFn: async ({ taskId }: { taskId: string }) => {
-      setExecutingTaskId(taskId);
-      const result = await window.electronAPI!.executeDeepDiveTask(plan.projectId, taskId);
-      return { taskId, result };
+  // Mutation to add a single task to project tasks
+  const addTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      return window.electronAPI!.convertDeepDiveTaskToProjectTask(plan.projectId, taskId);
     },
-    onSuccess: ({ taskId, result }) => {
-      setExecutingTaskId(null);
-      if (result.requiresApproval) {
-        setApprovalPending({
-          taskId,
-          reason: result.approvalReason || 'Approval required',
-          output: result.output || '',
-        });
+    onSuccess: (result, taskId) => {
+      if (result.success) {
+        setAddedTaskIds(prev => new Set(prev).add(taskId));
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks-stats'] });
       }
-      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
-    },
-    onError: () => {
-      setExecutingTaskId(null);
-      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
     },
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: async ({ taskId }: { taskId: string }) => {
-      return window.electronAPI!.cancelDeepDiveTask(plan.projectId, taskId);
+  // Mutation to add all tasks to project tasks
+  const addAllTasksMutation = useMutation({
+    mutationFn: async () => {
+      return window.electronAPI!.convertDeepDiveToTasks(plan.projectId);
     },
-    onSuccess: () => {
-      setExecutingTaskId(null);
-      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: (updates: { taskId: string; status: 'pending' | 'in_progress' | 'completed' | 'failed' }) =>
-      window.electronAPI!.updateDeepDivePlan(plan.projectId, { taskUpdates: [updates] }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deep-dive', plan.projectId] });
+    onSuccess: (result) => {
+      if (result.success) {
+        // Mark all tasks as added
+        const allTaskIds = plan.phases.flatMap(p => p.tasks.map(t => t.id));
+        setAddedTaskIds(new Set(allTaskIds));
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks-stats'] });
+      }
     },
   });
 
-  const handleApprove = () => {
-    if (approvalPending) {
-      updateMutation.mutate({ taskId: approvalPending.taskId, status: 'completed' });
-      setApprovalPending(null);
-    }
-  };
-
-  const handleReject = () => {
-    if (approvalPending) {
-      updateMutation.mutate({ taskId: approvalPending.taskId, status: 'pending' });
-      setApprovalPending(null);
-    }
-  };
-
-  const progress = plan.totalTasks > 0 ? (plan.completedTasks / plan.totalTasks) * 100 : 0;
-
-  const renderTaskButton = (task: DeepDiveTask) => {
-    const isExecuting = executingTaskId === task.id;
-
-    if (isExecuting) {
-      return (
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded border border-cyan-500 bg-cyan-500/20 flex items-center justify-center">
-            <Loader2 size={12} className="text-cyan-400 animate-spin" />
-          </div>
-          <span className="text-xs text-cyan-400 font-mono">{formatElapsedTime(elapsedTime)}</span>
-          <button
-            onClick={() => cancelMutation.mutate({ taskId: task.id })}
-            disabled={cancelMutation.isPending}
-            className="w-5 h-5 rounded bg-red-500/20 border border-red-500 hover:bg-red-500/40 flex items-center justify-center transition-colors"
-            title="Cancel execution"
-          >
-            <Square size={10} className="text-red-400" />
-          </button>
-        </div>
-      );
-    }
-
-    switch (task.status) {
-      case 'completed':
-        return (
-          <button
-            onClick={() => updateMutation.mutate({ taskId: task.id, status: 'pending' })}
-            disabled={updateMutation.isPending}
-            className="w-5 h-5 rounded bg-green-500 flex items-center justify-center hover:bg-green-600 transition-colors group relative"
-            title="Click to reset and re-run this task"
-          >
-            <Check size={12} className="text-white group-hover:hidden" />
-            <RefreshCw size={10} className="text-white hidden group-hover:block" />
-          </button>
-        );
-      case 'failed':
-        return (
-          <button
-            onClick={() => executeMutation.mutate({ taskId: task.id })}
-            disabled={executeMutation.isPending}
-            className="w-5 h-5 rounded bg-red-500 flex items-center justify-center hover:bg-red-600 transition-colors"
-            title={task.executionError || 'Task failed - click to retry'}
-          >
-            <X size={12} className="text-white" />
-          </button>
-        );
-      case 'in_progress':
-        // If no execution is currently running, this task is stuck - allow reset
-        return (
-          <button
-            onClick={() => updateMutation.mutate({ taskId: task.id, status: 'pending' })}
-            disabled={updateMutation.isPending}
-            className="flex items-center gap-2 group"
-            title="Task appears stuck - click to reset"
-          >
-            <div className="w-5 h-5 rounded border border-yellow-500 bg-yellow-500/20 flex items-center justify-center group-hover:bg-yellow-500/40 transition-colors">
-              <RefreshCw size={10} className="text-yellow-400" />
-            </div>
-            <span className="text-xs text-yellow-400">Stuck - click to reset</span>
-          </button>
-        );
-      default: // pending
-        return (
-          <button
-            onClick={() => executeMutation.mutate({ taskId: task.id })}
-            disabled={executeMutation.isPending}
-            className="w-5 h-5 rounded border border-slate-500 hover:border-cyan-400 hover:bg-cyan-500/20 flex items-center justify-center transition-colors group"
-            title="Click to execute this task"
-          >
-            <Play size={10} className="text-slate-500 group-hover:text-cyan-400" />
-          </button>
-        );
-    }
-  };
+  const pendingTasks = plan.phases.flatMap(p => p.tasks).filter(t => !addedTaskIds.has(t.id));
+  const allTasksAdded = pendingTasks.length === 0;
 
   return (
     <div className="space-y-3">
-      {/* Approval Modal */}
-      {approvalPending && (
-        <div className="p-4 bg-yellow-500/10 border border-yellow-500/50 rounded-lg">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="text-yellow-500 flex-shrink-0 mt-0.5" size={18} />
-            <div className="flex-1">
-              <h5 className="text-sm font-medium text-yellow-400">Approval Required</h5>
-              <p className="text-xs text-slate-400 mt-1">{approvalPending.reason}</p>
-              <div className="mt-2 p-2 bg-slate-800 rounded text-xs text-slate-300 max-h-32 overflow-y-auto font-mono">
-                {approvalPending.output.substring(0, 500)}
-                {approvalPending.output.length > 500 && '...'}
-              </div>
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={handleApprove}
-                  className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded transition-colors"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={handleReject}
-                  className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white text-xs rounded transition-colors"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Execution Status Banner with Live Logs */}
-      {executingTaskId && (
-        <div className="bg-cyan-500/10 border border-cyan-500/50 rounded-lg overflow-hidden">
-          {/* Header */}
-          <div className="p-3 flex items-center justify-between border-b border-cyan-500/30">
-            <div className="flex items-center gap-3">
-              <Loader2 size={16} className="text-cyan-400 animate-spin" />
-              <div>
-                <span className="text-sm text-cyan-400 font-medium">Executing task...</span>
-                <span className="text-xs text-slate-400 ml-2">
-                  {plan.phases.flatMap(p => p.tasks).find(t => t.id === executingTaskId)?.title}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-cyan-400 font-mono">{formatElapsedTime(elapsedTime)}</span>
-              <button
-                onClick={() => cancelMutation.mutate({ taskId: executingTaskId })}
-                disabled={cancelMutation.isPending}
-                className="px-2 py-1 bg-red-500/20 border border-red-500 hover:bg-red-500/40 rounded text-xs text-red-400 transition-colors flex items-center gap-1"
-              >
-                <Square size={10} />
-                Cancel
-              </button>
-            </div>
-          </div>
-
-          {/* Activity Status */}
-          <div className="px-3 py-2 flex items-center gap-4 bg-slate-900/50 border-b border-cyan-500/20">
-            <div className="flex items-center gap-2">
-              <Activity size={12} className="text-green-400" />
-              <span className="text-xs text-slate-300">{lastActivity || 'Starting...'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Terminal size={12} className="text-slate-500" />
-              <span className="text-xs text-slate-500">{(outputBytes / 1024).toFixed(1)} KB output</span>
-            </div>
-            <button
-              onClick={() => setShowLogs(!showLogs)}
-              className="ml-auto text-xs text-slate-400 hover:text-white flex items-center gap-1"
-            >
-              {showLogs ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              {showLogs ? 'Hide' : 'Show'} logs
-            </button>
-          </div>
-
-          {/* Live Logs */}
-          {showLogs && (
-            <div className="max-h-48 overflow-y-auto bg-slate-950 p-2 font-mono text-xs">
-              {executionLogs.length === 0 ? (
-                <div className="text-slate-500 text-center py-4">Waiting for output...</div>
-              ) : (
-                executionLogs.map((log, i) => (
-                  <div key={i} className="flex gap-2 py-0.5 hover:bg-slate-900">
-                    <span className="text-slate-600 flex-shrink-0">{log.timestamp}</span>
-                    <span className={`${
-                      log.type.includes('stderr') ? 'text-red-400' :
-                      log.type.includes('complete') ? 'text-green-400' :
-                      log.type.includes('timeout') ? 'text-yellow-400' :
-                      'text-slate-300'
-                    } break-all`}>
-                      {log.message}
-                    </span>
-                  </div>
-                ))
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-white">Deep Dive Plan</h4>
         <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 text-xs rounded ${
-            plan.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-            plan.status === 'in_progress' ? 'bg-cyan-500/20 text-cyan-400' :
-            plan.status === 'approved' ? 'bg-purple-500/20 text-purple-400' :
-            'bg-slate-700 text-slate-400'
-          }`}>
-            {plan.status}
-          </span>
-          {plan.completedTasks > 0 && (
-            <button
-              onClick={() => {
-                // Reset all non-pending tasks back to pending
-                plan.phases.forEach(phase => {
-                  phase.tasks.forEach(task => {
-                    if (task.status !== 'pending') {
-                      updateMutation.mutate({ taskId: task.id, status: 'pending' });
-                    }
-                  });
-                });
-              }}
-              disabled={updateMutation.isPending}
-              className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors"
-              title="Reset all tasks to pending"
-            >
-              Reset All
-            </button>
-          )}
           <button
             onClick={onRegenerate}
             disabled={isRegenerating}
@@ -933,19 +544,43 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div>
-        <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-          <span>Progress</span>
-          <span>{plan.completedTasks} / {plan.totalTasks} tasks</span>
+      {/* Add All Tasks Button */}
+      <div className="flex items-center justify-between p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+        <div>
+          <p className="text-sm text-purple-300">
+            {allTasksAdded
+              ? 'All tasks added to project'
+              : `${pendingTasks.length} tasks ready to add`}
+          </p>
+          <p className="text-xs text-slate-400">
+            Tasks will be added to your project task list
+          </p>
         </div>
-        <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-purple-500 transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        <button
+          onClick={() => addAllTasksMutation.mutate()}
+          disabled={addAllTasksMutation.isPending || allTasksAdded}
+          className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-slate-600 disabled:text-slate-400 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+        >
+          {addAllTasksMutation.isPending ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : allTasksAdded ? (
+            <Check size={14} />
+          ) : (
+            <Plus size={14} />
+          )}
+          {allTasksAdded ? 'Added' : 'Add All to Tasks'}
+        </button>
       </div>
+
+      {/* Success message */}
+      {addAllTasksMutation.isSuccess && addAllTasksMutation.data?.tasksCreated > 0 && (
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2">
+          <Check size={16} className="text-green-400" />
+          <span className="text-sm text-green-300">
+            Added {addAllTasksMutation.data.tasksCreated} tasks to project. <a href="/tasks" className="underline hover:text-green-200">View Tasks →</a>
+          </span>
+        </div>
+      )}
 
       {/* Phases */}
       <div className="space-y-3">
@@ -958,61 +593,70 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
               <p className="text-xs text-slate-400">{phase.description}</p>
             </div>
             <div className="divide-y divide-slate-700">
-              {phase.tasks.map((task) => (
-                <div key={task.id} className="group">
-                  <div className="px-3 py-2 flex items-center gap-3">
-                    {renderTaskButton(task)}
+              {phase.tasks.map((task) => {
+                const isAdded = addedTaskIds.has(task.id);
+                const isAdding = addTaskMutation.isPending && addTaskMutation.variables === task.id;
+
+                return (
+                  <div key={task.id} className="px-3 py-2 flex items-center gap-3">
+                    {/* Add to Tasks button */}
+                    <button
+                      onClick={() => addTaskMutation.mutate(task.id)}
+                      disabled={isAdded || isAdding}
+                      className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
+                        isAdded
+                          ? 'bg-green-500 text-white'
+                          : 'border border-slate-500 hover:border-purple-400 hover:bg-purple-500/20 text-slate-500 hover:text-purple-400'
+                      }`}
+                      title={isAdded ? 'Added to tasks' : 'Add to project tasks'}
+                    >
+                      {isAdding ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : isAdded ? (
+                        <Check size={12} />
+                      ) : (
+                        <Plus size={12} />
+                      )}
+                    </button>
+
+                    {/* Task info */}
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${
-                        task.status === 'completed' ? 'text-slate-500 line-through' :
-                        task.status === 'failed' ? 'text-red-400' :
-                        'text-slate-300'
-                      }`}>
+                      <p className={`text-sm ${isAdded ? 'text-slate-500' : 'text-slate-300'}`}>
                         {task.title}
                       </p>
-                      {task.status === 'failed' && task.executionError && (
-                        <p className="text-xs text-red-400/70 mt-0.5 truncate" title={task.executionError}>
-                          {task.executionError}
-                        </p>
-                      )}
+                      <p className="text-xs text-slate-500 truncate">{task.description}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {(task.executionOutput || task.executionError) && (
-                        <button
-                          onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                          className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
-                          title="View execution output"
-                        >
-                          <Eye size={14} />
-                        </button>
-                      )}
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${
-                        task.estimatedComplexity === 'high' ? 'bg-red-500/20 text-red-400' :
-                        task.estimatedComplexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-green-500/20 text-green-400'
-                      }`}>
-                        {task.estimatedComplexity}
-                      </span>
+
+                    {/* Complexity badge */}
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      task.estimatedComplexity === 'high' ? 'bg-red-500/20 text-red-400' :
+                      task.estimatedComplexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-green-500/20 text-green-400'
+                    }`}>
+                      {task.estimatedComplexity}
+                    </span>
+
+                    {/* Expand description */}
+                    <button
+                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                      title="View details"
+                    >
+                      {expandedTaskId === task.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Expanded task details */}
+              {plan.phases.find(p => p.id === phase.id)?.tasks.map(task => (
+                expandedTaskId === task.id && (
+                  <div key={`${task.id}-expanded`} className="px-3 pb-3 bg-slate-800/50">
+                    <div className="p-3 bg-slate-900 rounded text-xs">
+                      <p className="text-slate-300 whitespace-pre-wrap">{task.description}</p>
                     </div>
                   </div>
-                  {/* Expanded output view */}
-                  {expandedTaskId === task.id && (task.executionOutput || task.executionError) && (
-                    <div className="px-3 pb-3">
-                      <div className="p-2 bg-slate-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
-                        {task.executionError ? (
-                          <pre className="text-red-400 whitespace-pre-wrap">{task.executionError}</pre>
-                        ) : (
-                          <pre className="text-slate-300 whitespace-pre-wrap">{task.executionOutput}</pre>
-                        )}
-                      </div>
-                      {task.executedAt && (
-                        <p className="text-xs text-slate-500 mt-1">
-                          Executed: {new Date(task.executedAt).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                )
               ))}
             </div>
           </div>

@@ -260,6 +260,8 @@ interface ElectronAPI {
   deleteDeepDivePlan: (projectId: string) => Promise<boolean>;
   executeDeepDiveTask: (projectId: string, taskId: string) => Promise<{ success: boolean; output?: string; error?: string; requiresApproval?: boolean; approvalReason?: string }>;
   cancelDeepDiveTask: (projectId: string, taskId: string) => Promise<{ cancelled: boolean }>;
+  convertDeepDiveToTasks: (projectId: string, options?: { phaseIds?: string[]; taskIds?: string[] }) => Promise<{ success: boolean; tasksCreated: number; error?: string }>;
+  convertDeepDiveTaskToProjectTask: (projectId: string, taskId: string) => Promise<{ success: boolean; tasksCreated: number; error?: string }>;
 
   // New Project
   scaffoldNewProject: (targetPath: string, spec: NewProjectSpec) => Promise<{ success: boolean; error?: string }>;

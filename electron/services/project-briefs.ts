@@ -3,6 +3,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import Store from 'electron-store';
 import { getExecutor } from './executor';
+import { createTask, type TaskPriority } from './tasks';
 
 // Types
 export interface ProjectBrief {
@@ -929,4 +930,78 @@ export async function scaffoldNewProject(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+}
+
+// Convert Deep Dive tasks to project tasks
+export interface ConvertToTasksResult {
+  success: boolean;
+  tasksCreated: number;
+  error?: string;
+}
+
+export function convertDeepDiveToTasks(
+  projectId: string,
+  options?: {
+    phaseIds?: string[];  // Only convert tasks from these phases (all if not specified)
+    taskIds?: string[];   // Only convert these specific tasks (all if not specified)
+  }
+): ConvertToTasksResult {
+  const plan = getDeepDivePlan(projectId);
+  if (!plan) {
+    return { success: false, tasksCreated: 0, error: 'Deep dive plan not found' };
+  }
+
+  const brief = getProjectBrief(projectId);
+  let tasksCreated = 0;
+
+  for (const phase of plan.phases) {
+    // Skip phases not in the filter (if filter provided)
+    if (options?.phaseIds && !options.phaseIds.includes(phase.id)) {
+      continue;
+    }
+
+    for (const task of phase.tasks) {
+      // Skip tasks not in the filter (if filter provided)
+      if (options?.taskIds && !options.taskIds.includes(task.id)) {
+        continue;
+      }
+
+      // Skip already completed tasks
+      if (task.status === 'completed') {
+        continue;
+      }
+
+      // Map complexity to priority
+      const priorityMap: Record<string, TaskPriority> = {
+        'high': 'high',
+        'medium': 'medium',
+        'low': 'low',
+      };
+      const priority = priorityMap[task.estimatedComplexity] || 'medium';
+
+      // Create the task with context from the phase
+      const description = `**Phase: ${phase.name}**\n${phase.description}\n\n**Task:**\n${task.description}`;
+
+      createTask({
+        title: task.title,
+        description,
+        status: 'todo',
+        priority,
+        projectId,
+        projectName: brief?.projectName || plan.projectName,
+      });
+
+      tasksCreated++;
+    }
+  }
+
+  return { success: true, tasksCreated };
+}
+
+// Convert a single Deep Dive task to a project task
+export function convertSingleTaskToProjectTask(
+  projectId: string,
+  taskId: string
+): ConvertToTasksResult {
+  return convertDeepDiveToTasks(projectId, { taskIds: [taskId] });
 }
