@@ -653,19 +653,20 @@ interface ActionClassification {
 }
 
 function classifyDeepDiveAction(taskTitle: string, taskDescription: string, claudeResponse: string): ActionClassification {
-  const combinedText = `${taskTitle} ${taskDescription} ${claudeResponse}`.toLowerCase();
+  // Only check Claude's response for risky operations - not the task title/description
+  // The user already approved the task when they clicked Execute
+  const responseText = claudeResponse.toLowerCase();
 
-  // Check for risky operations that need approval
+  // Check for actually dangerous operations in Claude's response
   const riskyPatterns = [
-    { pattern: /git push|push to remote|push to origin/, reason: 'Git push operation' },
-    { pattern: /refactor|rewrite|major changes|restructure/, reason: 'Large-scale refactoring' },
-    { pattern: /delete.*file|remove.*file|rm -rf/, reason: 'File deletion' },
-    { pattern: /drop.*table|delete.*database|truncate/, reason: 'Database modification' },
-    { pattern: /deploy|production|release/, reason: 'Deployment operation' },
+    { pattern: /git push(?! --dry-run)|pushed to (?:remote|origin|main|master)/, reason: 'Git push operation' },
+    { pattern: /rm -rf|deleted \d+ files|removing directory/, reason: 'Bulk file deletion' },
+    { pattern: /drop table|truncate table|delete from .* where 1|deleted.*database/, reason: 'Database modification' },
+    { pattern: /deployed to production|pushing to production|released version/, reason: 'Production deployment' },
   ];
 
   for (const { pattern, reason } of riskyPatterns) {
-    if (pattern.test(combinedText)) {
+    if (pattern.test(responseText)) {
       return { requiresApproval: true, reason };
     }
   }
@@ -724,26 +725,29 @@ export async function executeDeepDiveTask(
     const executor = await getExecutor();
 
     // Build the prompt with full context
-    let prompt = `## Project Context
-Project: ${plan.projectName}
-Path: ${brief?.projectPath || 'Unknown'}
-Tech Stack: ${brief?.techStack?.join(', ') || 'Unknown'}
+    const prompt = `Execute the following task in this project:
 
-## Current Phase
-${targetPhase.name}: ${targetPhase.description}
+PROJECT: ${plan.projectName}
+PATH: ${brief?.projectPath || process.cwd()}
+TECH STACK: ${brief?.techStack?.join(', ') || 'Unknown'}
 
-## Task to Execute
-**${targetTask.title}**
+PHASE: ${targetPhase.name}
+PHASE GOAL: ${targetPhase.description}
 
-${targetTask.description}
+TASK: ${targetTask.title}
+DETAILS: ${targetTask.description}
 
-Please complete this task. Work within the project${brief?.projectPath ? ` at ${brief.projectPath}` : ''}.
-Be thorough but concise in your response. If you make changes, summarize what was done.`;
+Instructions:
+1. Read and understand the relevant code files
+2. Make the necessary changes to complete the task
+3. Report what you did and what files were modified
 
-    const systemPrompt = `You are an AI assistant executing tasks from a deep dive plan.
-Your job is to complete the given task efficiently and report what was accomplished.
-If the task requires clarification or cannot be completed, explain why.
-Focus on the specific task - don't go beyond its scope.`;
+Do NOT ask clarifying questions - proceed with the most reasonable interpretation.
+Do NOT just describe what should be done - actually do it using the available tools.`;
+
+    const systemPrompt = `You are executing a coding task. Use the Read, Edit, Write, Grep, and Glob tools to complete the task.
+Do not engage in conversation - execute the task directly.
+If you cannot complete the task, explain why and what blockers exist.`;
 
     // Generate execution ID for tracking/cancellation
     const executionId = `deepdive-${projectId}-${taskId}`;
