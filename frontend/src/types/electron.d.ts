@@ -244,6 +244,9 @@ interface ElectronAPI {
   onNtfyQuestionAsked: (callback: (question: PendingQuestion) => void) => () => void;
   onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
 
+  // Executor debugging logs
+  onExecutorLog: (callback: (log: { type: string; [key: string]: unknown }) => void) => () => void;
+
   // Project Briefs
   generateProjectBrief: (projectId: string, projectPath: string, projectName: string) => Promise<ProjectBrief>;
   getProjectBrief: (projectId: string) => Promise<ProjectBrief | null>;

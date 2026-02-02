@@ -21,6 +21,8 @@ import {
   Play,
   Eye,
   Square,
+  Terminal,
+  Activity,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -487,6 +489,13 @@ function ProjectBriefView({ brief, onRegenerate, isRegenerating }: { brief: Proj
   );
 }
 
+interface ExecutorLog {
+  timestamp: string;
+  type: string;
+  message: string;
+  bytes?: number;
+}
+
 function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDivePlan; onRegenerate: () => void; isRegenerating: boolean }) {
   const queryClient = useQueryClient();
   const [executingTaskId, setExecutingTaskId] = useState<string | null>(null);
@@ -494,6 +503,11 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
   const [approvalPending, setApprovalPending] = useState<{ taskId: string; reason: string; output: string } | null>(null);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const startTimeRef = useRef<number | null>(null);
+  const [executionLogs, setExecutionLogs] = useState<ExecutorLog[]>([]);
+  const [showLogs, setShowLogs] = useState(true);
+  const [outputBytes, setOutputBytes] = useState(0);
+  const [lastActivity, setLastActivity] = useState<string>('');
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Timer for elapsed time
   useEffect(() => {
@@ -513,6 +527,103 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
       if (interval) clearInterval(interval);
     };
   }, [executingTaskId]);
+
+  // Listen to executor logs during execution
+  useEffect(() => {
+    if (!executingTaskId) {
+      return;
+    }
+
+    // Clear logs when starting new execution
+    setExecutionLogs([]);
+    setOutputBytes(0);
+    setLastActivity('Starting...');
+
+    const unsubscribe = window.electronAPI?.onExecutorLog((log) => {
+      const now = new Date().toLocaleTimeString();
+
+      // Parse the log type and create a meaningful message
+      let message = '';
+      let bytes = 0;
+
+      switch (log.type) {
+        case 'spawn':
+        case 'spawn-command':
+          message = `Starting Claude Code...`;
+          setLastActivity('Initializing');
+          break;
+        case 'wsl-spawn':
+          message = `Starting Claude Code (WSL)...`;
+          setLastActivity('Initializing');
+          break;
+        case 'stdout':
+        case 'wsl-stdout': {
+          const chunk = (log.chunk as string) || '';
+          bytes = (log.totalLength as number) || 0;
+          setOutputBytes(bytes);
+
+          // Parse Claude Code output for activity indicators
+          if (chunk.includes('Read(')) {
+            setLastActivity('Reading file');
+          } else if (chunk.includes('Grep(') || chunk.includes('Glob(')) {
+            setLastActivity('Searching');
+          } else if (chunk.includes('Edit(') || chunk.includes('Write(')) {
+            setLastActivity('Writing code');
+          } else if (chunk.includes('Bash(')) {
+            setLastActivity('Running command');
+          } else if (chunk.includes('Task(')) {
+            setLastActivity('Spawning agent');
+          } else if (chunk.length > 0) {
+            setLastActivity('Processing');
+          }
+
+          // Only add meaningful chunks to logs (skip empty)
+          if (chunk.trim()) {
+            message = chunk.length > 100 ? chunk.substring(0, 100) + '...' : chunk;
+          }
+          break;
+        }
+        case 'stderr':
+        case 'wsl-stderr': {
+          const errChunk = (log.chunk as string) || '';
+          if (errChunk.trim()) {
+            message = `[stderr] ${errChunk.length > 80 ? errChunk.substring(0, 80) + '...' : errChunk}`;
+          }
+          break;
+        }
+        case 'idle-timeout':
+        case 'wsl-idle-timeout':
+          message = `Idle timeout - no activity for ${(log.idleTime as number) / 1000}s`;
+          setLastActivity('Timed out');
+          break;
+        case 'complete':
+        case 'wsl-complete': {
+          const code = log.code as number;
+          const duration = ((log.duration as number) / 1000).toFixed(1);
+          message = `Completed (exit: ${code}, ${duration}s, ${log.stdoutLength} bytes)`;
+          setLastActivity(code === 0 ? 'Completed' : 'Failed');
+          break;
+        }
+        default:
+          message = `${log.type}`;
+      }
+
+      if (message) {
+        setExecutionLogs(prev => [...prev.slice(-50), { timestamp: now, type: log.type, message, bytes }]);
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [executingTaskId]);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logsEndRef.current && showLogs) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [executionLogs, showLogs]);
 
   const formatElapsedTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -685,10 +796,11 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
         </div>
       )}
 
-      {/* Execution Status Banner */}
+      {/* Execution Status Banner with Live Logs */}
       {executingTaskId && (
-        <div className="p-3 bg-cyan-500/10 border border-cyan-500/50 rounded-lg">
-          <div className="flex items-center justify-between">
+        <div className="bg-cyan-500/10 border border-cyan-500/50 rounded-lg overflow-hidden">
+          {/* Header */}
+          <div className="p-3 flex items-center justify-between border-b border-cyan-500/30">
             <div className="flex items-center gap-3">
               <Loader2 size={16} className="text-cyan-400 animate-spin" />
               <div>
@@ -710,6 +822,49 @@ function DeepDivePlanView({ plan, onRegenerate, isRegenerating }: { plan: DeepDi
               </button>
             </div>
           </div>
+
+          {/* Activity Status */}
+          <div className="px-3 py-2 flex items-center gap-4 bg-slate-900/50 border-b border-cyan-500/20">
+            <div className="flex items-center gap-2">
+              <Activity size={12} className="text-green-400" />
+              <span className="text-xs text-slate-300">{lastActivity || 'Starting...'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Terminal size={12} className="text-slate-500" />
+              <span className="text-xs text-slate-500">{(outputBytes / 1024).toFixed(1)} KB output</span>
+            </div>
+            <button
+              onClick={() => setShowLogs(!showLogs)}
+              className="ml-auto text-xs text-slate-400 hover:text-white flex items-center gap-1"
+            >
+              {showLogs ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {showLogs ? 'Hide' : 'Show'} logs
+            </button>
+          </div>
+
+          {/* Live Logs */}
+          {showLogs && (
+            <div className="max-h-48 overflow-y-auto bg-slate-950 p-2 font-mono text-xs">
+              {executionLogs.length === 0 ? (
+                <div className="text-slate-500 text-center py-4">Waiting for output...</div>
+              ) : (
+                executionLogs.map((log, i) => (
+                  <div key={i} className="flex gap-2 py-0.5 hover:bg-slate-900">
+                    <span className="text-slate-600 flex-shrink-0">{log.timestamp}</span>
+                    <span className={`${
+                      log.type.includes('stderr') ? 'text-red-400' :
+                      log.type.includes('complete') ? 'text-green-400' :
+                      log.type.includes('timeout') ? 'text-yellow-400' :
+                      'text-slate-300'
+                    } break-all`}>
+                      {log.message}
+                    </span>
+                  </div>
+                ))
+              )}
+              <div ref={logsEndRef} />
+            </div>
+          )}
         </div>
       )}
 

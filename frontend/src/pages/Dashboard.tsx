@@ -38,7 +38,9 @@ export default function Dashboard() {
   });
 
   const projectCount = systemStatus?.projects?.length || 0;
-  const sessionCount = systemStatus?.sessions?.length || 0;
+  const runningSessions = systemStatus?.sessions?.filter(s => s.status === 'running') || [];
+  const recentSessions = systemStatus?.sessions?.filter(s => s.status === 'recent') || [];
+  const runningCount = runningSessions.length;
   const discoveredCount = systemStatus?.discovered?.length || 0;
 
   return (
@@ -60,9 +62,9 @@ export default function Dashboard() {
           <StatCard
             icon={Monitor}
             label="Claude Sessions"
-            value={sessionCount}
-            color={sessionCount > 0 ? "text-green-400" : "text-slate-400"}
-            subtitle={sessionCount > 0 ? "Active" : "None running"}
+            value={runningCount}
+            color={runningCount > 0 ? "text-green-400" : "text-slate-400"}
+            subtitle={runningCount > 0 ? "Running" : recentSessions.length > 0 ? `${recentSessions.length} recent` : "None running"}
           />
         </Link>
         <Link to="/tasks">
@@ -77,16 +79,16 @@ export default function Dashboard() {
       </div>
 
       {/* Active Sessions Quick View */}
-      {sessionCount > 0 && (
+      {runningCount > 0 && (
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-slate-400">Active Claude Sessions</h3>
+            <h3 className="text-sm font-medium text-slate-400">Running Claude Sessions</h3>
             <Link to="/sessions" className="text-xs text-cyan-400 hover:text-cyan-300">
               View all →
             </Link>
           </div>
           <div className="space-y-3">
-            {systemStatus?.sessions?.filter(s => s.status === 'running' || !s.status).slice(0, 3).map((session) => (
+            {runningSessions.slice(0, 3).map((session) => (
               <div key={`${session.pid}-${session.source}`} className="p-3 bg-slate-900 rounded-lg">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -115,9 +117,9 @@ export default function Dashboard() {
                 )}
               </div>
             ))}
-            {sessionCount > 3 && (
+            {runningCount > 3 && (
               <Link to="/sessions" className="block text-center text-xs text-cyan-400 hover:text-cyan-300 py-2">
-                +{sessionCount - 3} more sessions →
+                +{runningCount - 3} more running →
               </Link>
             )}
           </div>
