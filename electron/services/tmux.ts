@@ -7,6 +7,18 @@ const execAsync = promisify(exec);
 // Check if running on Windows
 const isWindows = process.platform === 'win32';
 
+/**
+ * Wrap a command for execution via WSL on Windows
+ */
+function wslWrap(command: string): string {
+  if (isWindows) {
+    // Escape double quotes and wrap for WSL
+    const escaped = command.replace(/"/g, '\\"');
+    return `wsl.exe -e bash -c "${escaped}"`;
+  }
+  return command;
+}
+
 // Store for tmux session metadata
 interface TmuxSessionMeta {
   projectId?: string;
@@ -125,10 +137,10 @@ export async function getTmuxStatus(): Promise<{
 export async function listSessions(): Promise<TmuxSession[]> {
   try {
     // Format: session_id:session_name:window_count:created_timestamp:attached
-    const { stdout } = await execAsync(
-      'tmux list-sessions -F "#{session_id}:#{session_name}:#{session_windows}:#{session_created}:#{session_attached}" 2>/dev/null || echo ""',
-      { timeout: 10000 }
+    const command = wslWrap(
+      'tmux list-sessions -F "#{session_id}:#{session_name}:#{session_windows}:#{session_created}:#{session_attached}" 2>/dev/null || echo ""'
     );
+    const { stdout } = await execAsync(command, { timeout: 10000 });
 
     if (!stdout.trim()) {
       return [];
@@ -172,12 +184,12 @@ export async function createSession(
     // Sanitize session name (tmux doesn't allow dots or colons)
     const safeName = name.replace(/[.:]/g, '_');
 
-    let command = `tmux new-session -d -s "${safeName}"`;
+    let tmuxCommand = `tmux new-session -d -s '${safeName}'`;
     if (cwd) {
-      command += ` -c "${cwd}"`;
+      tmuxCommand += ` -c '${cwd}'`;
     }
 
-    await execAsync(command, { timeout: 10000 });
+    await execAsync(wslWrap(tmuxCommand), { timeout: 10000 });
 
     // Save metadata
     const meta = tmuxStore.get('sessionMeta') || {};
@@ -200,46 +212,59 @@ export async function createSession(
  */
 export async function attachSession(name: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Determine the terminal emulator to use
-    const terminals = [
-      'x-terminal-emulator',
-      'gnome-terminal',
-      'konsole',
-      'xfce4-terminal',
-      'alacritty',
-      'kitty',
-      'xterm',
-    ];
-
-    let terminalCmd: string | null = null;
-    for (const term of terminals) {
-      try {
-        await execAsync(`which ${term}`, { timeout: 2000 });
-        terminalCmd = term;
-        break;
-      } catch {
-        // Try next terminal
-      }
-    }
-
-    if (!terminalCmd) {
-      return { success: false, error: 'No terminal emulator found' };
-    }
-
-    // Build the attach command based on terminal type
     let fullCommand: string;
-    if (terminalCmd === 'gnome-terminal') {
-      fullCommand = `gnome-terminal -- tmux attach -t "${name}"`;
-    } else if (terminalCmd === 'konsole') {
-      fullCommand = `konsole -e tmux attach -t "${name}"`;
-    } else if (terminalCmd === 'xfce4-terminal') {
-      fullCommand = `xfce4-terminal -e "tmux attach -t '${name}'"`;
-    } else if (terminalCmd === 'alacritty') {
-      fullCommand = `alacritty -e tmux attach -t "${name}"`;
-    } else if (terminalCmd === 'kitty') {
-      fullCommand = `kitty tmux attach -t "${name}"`;
+
+    if (isWindows) {
+      // On Windows, use Windows Terminal to attach to WSL tmux session
+      // Try Windows Terminal first, fall back to cmd with wsl
+      try {
+        await execAsync('where wt.exe', { timeout: 2000 });
+        fullCommand = `wt.exe -w 0 wsl.exe -e tmux attach -t "${name}"`;
+      } catch {
+        // Fall back to cmd launching wsl
+        fullCommand = `start cmd /c wsl.exe -e tmux attach -t "${name}"`;
+      }
     } else {
-      fullCommand = `${terminalCmd} -e tmux attach -t "${name}"`;
+      // On Linux/macOS, find a terminal emulator
+      const terminals = [
+        'x-terminal-emulator',
+        'gnome-terminal',
+        'konsole',
+        'xfce4-terminal',
+        'alacritty',
+        'kitty',
+        'xterm',
+      ];
+
+      let terminalCmd: string | null = null;
+      for (const term of terminals) {
+        try {
+          await execAsync(`which ${term}`, { timeout: 2000 });
+          terminalCmd = term;
+          break;
+        } catch {
+          // Try next terminal
+        }
+      }
+
+      if (!terminalCmd) {
+        return { success: false, error: 'No terminal emulator found' };
+      }
+
+      // Build the attach command based on terminal type
+      if (terminalCmd === 'gnome-terminal') {
+        fullCommand = `gnome-terminal -- tmux attach -t "${name}"`;
+      } else if (terminalCmd === 'konsole') {
+        fullCommand = `konsole -e tmux attach -t "${name}"`;
+      } else if (terminalCmd === 'xfce4-terminal') {
+        fullCommand = `xfce4-terminal -e "tmux attach -t '${name}'"`;
+      } else if (terminalCmd === 'alacritty') {
+        fullCommand = `alacritty -e tmux attach -t "${name}"`;
+      } else if (terminalCmd === 'kitty') {
+        fullCommand = `kitty tmux attach -t "${name}"`;
+      } else {
+        fullCommand = `${terminalCmd} -e tmux attach -t "${name}"`;
+      }
     }
 
     // Spawn detached so the terminal runs independently
@@ -263,7 +288,7 @@ export async function attachSession(name: string): Promise<{ success: boolean; e
  */
 export async function killSession(name: string): Promise<{ success: boolean; error?: string }> {
   try {
-    await execAsync(`tmux kill-session -t "${name}"`, { timeout: 10000 });
+    await execAsync(wslWrap(`tmux kill-session -t '${name}'`), { timeout: 10000 });
 
     // Remove metadata
     const meta = tmuxStore.get('sessionMeta') || {};
@@ -287,10 +312,11 @@ export async function getSessionHistory(
 ): Promise<TmuxHistoryResult> {
   try {
     // Capture pane content from the first window/pane
-    const { stdout } = await execAsync(
-      `tmux capture-pane -t "${name}" -p -S -${lines}`,
-      { timeout: 10000, maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
-    );
+    const command = wslWrap(`tmux capture-pane -t '${name}' -p -S -${lines}`);
+    const { stdout } = await execAsync(command, {
+      timeout: 10000,
+      maxBuffer: 10 * 1024 * 1024,
+    }); // 10MB buffer
 
     return { success: true, content: stdout };
   } catch (error) {
@@ -308,7 +334,10 @@ export async function sendKeys(
   keys: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await execAsync(`tmux send-keys -t "${name}" "${keys}" Enter`, { timeout: 10000 });
+    // Escape single quotes in keys for shell safety
+    const escapedKeys = keys.replace(/'/g, "'\\''");
+    const command = wslWrap(`tmux send-keys -t '${name}' '${escapedKeys}' Enter`);
+    await execAsync(command, { timeout: 10000 });
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -350,7 +379,8 @@ export async function renameSession(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const safeName = newName.replace(/[.:]/g, '_');
-    await execAsync(`tmux rename-session -t "${oldName}" "${safeName}"`, { timeout: 10000 });
+    const command = wslWrap(`tmux rename-session -t '${oldName}' '${safeName}'`);
+    await execAsync(command, { timeout: 10000 });
 
     // Move metadata to new name
     const meta = tmuxStore.get('sessionMeta') || {};
