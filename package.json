@@ -53,7 +53,10 @@
     "onlyBuiltDependencies": [
       "electron",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "tar": ">=7.5.7"
+    }
   },
   "build": {
     "appId": "com.aicontroller.app",

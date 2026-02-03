@@ -288,7 +288,7 @@ class WindowsExecutor implements IExecutor {
 
         console.log('[Executor] Claude exit code:', code, 'signal:', signal);
         console.log('[Executor] Claude stdout length:', stdout.length);
-        if (stderr) console.log('[Executor] Claude stderr:', stderr);
+        if (stderr) console.log('[Executor] Claude stderr:', stderr.substring(0, 500));
 
         if (wasCancelled) {
           resolve({

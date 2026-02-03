@@ -1,5 +1,17 @@
 import { IpcMain, app, dialog, BrowserWindow } from 'electron';
 import { safeBroadcast } from '../utils/safe-ipc';
+import {
+  ExecutionModeSchema,
+  CommandArgsSchema,
+  NonEmptyStringSchema,
+  CreateTaskInputSchema,
+  UpdateTaskInputSchema,
+  UsageLimitConfigSchema,
+  ConversationEntryInputSchema,
+  NtfyConfigSchema,
+  assertValid,
+  isValidId,
+} from '../utils/ipc-validation';
 import { getExecutor, switchExecutor, detectModes, getDebugInfo } from '../services/executor';
 import { checkForUpdates, downloadUpdate, installUpdate, getUpdateStatus, getCurrentVersion } from '../services/auto-updater';
 import { settings, getSetting, setSetting, getSettings } from '../services/settings';
@@ -212,10 +224,11 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return settings.get('executionMode');
   });
 
-  ipcMain.handle('mode:set', async (_, mode: 'windows' | 'wsl') => {
-    await switchExecutor(mode);
+  ipcMain.handle('mode:set', async (_, mode: unknown) => {
+    const validMode = assertValid(ExecutionModeSchema, mode, 'execution mode');
+    await switchExecutor(validMode);
     // Notify all windows of mode change
-    safeBroadcast('mode-changed', mode);
+    safeBroadcast('mode-changed', validMode);
   });
 
   ipcMain.handle('mode:detect', async () => {
@@ -233,14 +246,16 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   });
 
   // Gas Town CLI execution
-  ipcMain.handle('gt:execute', async (_, args: string[]) => {
+  ipcMain.handle('gt:execute', async (_, args: unknown) => {
+    const validArgs = assertValid(CommandArgsSchema, args, 'command arguments');
     const executor = await getExecutor();
-    return executor.runGt(args);
+    return executor.runGt(validArgs);
   });
 
-  ipcMain.handle('bd:execute', async (_, args: string[]) => {
+  ipcMain.handle('bd:execute', async (_, args: unknown) => {
+    const validArgs = assertValid(CommandArgsSchema, args, 'command arguments');
     const executor = await getExecutor();
-    return executor.runBd(args);
+    return executor.runBd(validArgs);
   });
 
   // Beads handlers (direct file access for performance)
@@ -394,12 +409,17 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return getTasksByProject(projectId);
   });
 
-  ipcMain.handle('tasks:create', async (_, input: CreateTaskInput) => {
-    return createTask(input);
+  ipcMain.handle('tasks:create', async (_, input: unknown) => {
+    const validInput = assertValid(CreateTaskInputSchema, input, 'task input');
+    return createTask(validInput as CreateTaskInput);
   });
 
-  ipcMain.handle('tasks:update', async (_, id: string, updates: UpdateTaskInput) => {
-    return updateTask(id, updates);
+  ipcMain.handle('tasks:update', async (_, id: unknown, updates: unknown) => {
+    if (!isValidId(id)) {
+      throw new Error('Invalid task ID');
+    }
+    const validUpdates = assertValid(UpdateTaskInputSchema, updates, 'task updates');
+    return updateTask(id, validUpdates as UpdateTaskInput);
   });
 
   ipcMain.handle('tasks:delete', async (_, id: string) => {
@@ -468,8 +488,10 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return clearProgress();
   });
 
-  ipcMain.handle('controller:updateTokenUsage', (_, input: number, output: number) => {
-    return updateTokenUsage(input, output);
+  ipcMain.handle('controller:updateTokenUsage', (_, input: unknown, output: unknown) => {
+    const validInput = typeof input === 'number' && input >= 0 ? input : 0;
+    const validOutput = typeof output === 'number' && output >= 0 ? output : 0;
+    return updateTokenUsage(validInput, validOutput);
   });
 
   ipcMain.handle('controller:resetTokenUsage', () => {
@@ -484,8 +506,9 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return getUsageLimitConfig();
   });
 
-  ipcMain.handle('controller:updateUsageLimitConfig', (_, config: Partial<{ maxTokensPerHour: number; maxTokensPerDay: number; pauseThreshold: number; warningThreshold: number; autoResumeOnReset: boolean }>) => {
-    return updateUsageLimitConfig(config);
+  ipcMain.handle('controller:updateUsageLimitConfig', (_, config: unknown) => {
+    const validConfig = assertValid(UsageLimitConfigSchema, config, 'usage limit config');
+    return updateUsageLimitConfig(validConfig);
   });
 
   ipcMain.handle('controller:getUsagePercentages', () => {
