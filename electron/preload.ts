@@ -542,7 +542,7 @@ export interface DailyTokenUsage {
 }
 
 // Activity Log types
-export type ActivityCategory = 'execution' | 'user_action' | 'system' | 'error';
+export type ActivityCategory = 'execution' | 'user_action' | 'system' | 'error' | 'project';
 
 export interface ActivityLogEntry {
   id: string;

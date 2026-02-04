@@ -2,7 +2,7 @@ import Store from 'electron-store';
 import { getEncryptionKey } from '../utils/encryption-key';
 import { calculateCost } from '../services/cost-calculator';
 
-export type ActivityCategory = 'execution' | 'user_action' | 'system' | 'error';
+export type ActivityCategory = 'execution' | 'user_action' | 'system' | 'error' | 'project';
 
 export interface ActivityLogEntry {
   id: string;
@@ -269,6 +269,7 @@ export function getActivitySummary(dateRange?: { start?: string; end?: string })
       user_action: 0,
       system: 0,
       error: 0,
+      project: 0,
     },
     averageDuration: 0,
   };
