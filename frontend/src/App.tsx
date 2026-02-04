@@ -10,7 +10,6 @@ import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
 import Settings from './pages/Settings';
 import Setup from './pages/Setup';
-import TmuxSessions from './pages/TmuxSessions';
 import ClawdbotSettings from './pages/ClawdbotSettings';
 import Clawdbot from './pages/Clawdbot';
 import ActivityLog from './pages/ActivityLog';
@@ -64,7 +63,6 @@ function App() {
           <Route path="sessions" element={<Sessions />} />
           <Route path="agents" element={<Agents />} />
           <Route path="tasks" element={<Tasks />} />
-          <Route path="tmux" element={<TmuxSessions />} />
           <Route path="chat" element={<Clawdbot />} />
           <Route path="clawdbot" element={<ClawdbotSettings />} />
           <Route path="activity" element={<ActivityLog />} />

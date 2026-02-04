@@ -61,7 +61,6 @@ Gas Town is a **multi-agent orchestrator** for Claude Code that solves the funda
 | ----------- | ------- | ------------------------- |
 | Go          | 1.23+   | Build tools               |
 | Git         | 2.25+   | Worktree support          |
-| tmux        | 3.0+    | Agent sessions (optional) |
 | Claude Code | Latest  | AI agents                 |
 
 ### Installation
@@ -437,7 +436,7 @@ interface Agent {
   status: AgentStatus; // idle | working | stuck | handoff_requested | offline
   current_task?: string; // Bead ID
   hook?: Hook; // Current work hook
-  session_id?: string; // tmux session
+  session_id?: string; // Claude Code session
   started_at?: string;
   context_usage?: number; // 0-100%
   last_activity?: string;
@@ -671,7 +670,7 @@ bv --diff-since v1.0.0           # Compare changes
 │   │  /api/beads      ─┼────▶│  Parse .beads/beads.jsonl directly         ││
 │   │  /api/insights   ─┼────▶│  Call bv --robot-insights                  ││
 │   │  /api/convoys    ─┼────▶│  Call gt convoy list --json                ││
-│   │  /api/agents     ─┼────▶│  Call gt status --json + tmux              ││
+│   │  /api/agents     ─┼────▶│  Call gt status --json                     ││
 │   │  /api/mail       ─┼────▶│  Call gt mail inbox --json                 ││
 │   │                   │     │                                             ││
 │   └───────────────────┘     └─────────────────────────────────────────────┘│
@@ -957,11 +956,11 @@ gt convoy create "MVP Launch" gt-001 gt-002 gt-003 --notify
 ### 3. Start Working
 
 ```bash
-# Option A: Minimal (no tmux)
+# Option A: Manual
 gt sling gt-001 myproject
 claude --resume  # Agent reads hook, runs work
 
-# Option B: Full stack
+# Option B: Automated
 gt daemon start
 gt sling gt-001 myproject  # Spawns polecat automatically
 gt convoy list             # Monitor progress

@@ -402,18 +402,6 @@ interface ElectronAPI {
   callMcpTool: (serverName: string, toolName: string, args: Record<string, unknown>) => Promise<unknown>;
   autoConnectMcpServers: () => Promise<string[]>;
 
-  // tmux Session Management
-  isTmuxAvailable: () => Promise<boolean>;
-  getTmuxStatus: () => Promise<TmuxStatus>;
-  listTmuxSessions: () => Promise<TmuxSession[]>;
-  createTmuxSession: (name: string, projectId?: string, cwd?: string) => Promise<{ success: boolean; error?: string }>;
-  attachTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
-  killTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
-  getTmuxSessionHistory: (name: string, lines?: number) => Promise<TmuxHistoryResult>;
-  sendTmuxKeys: (name: string, keys: string) => Promise<{ success: boolean; error?: string }>;
-  updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }) => Promise<{ success: boolean }>;
-  renameTmuxSession: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
-
   // Image handling for chat
   saveImageToTemp: (base64Data: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   cleanupTempImages: () => Promise<{ success: boolean; error?: string }>;
@@ -468,29 +456,6 @@ declare global {
   interface Window {
     electronAPI?: ElectronAPI;
   }
-}
-
-// tmux types
-export interface TmuxSession {
-  id: string;
-  name: string;
-  windows: number;
-  created: Date;
-  attached: boolean;
-  projectId?: string;
-  notes?: string;
-}
-
-export interface TmuxHistoryResult {
-  success: boolean;
-  content?: string;
-  error?: string;
-}
-
-export interface TmuxStatus {
-  available: boolean;
-  platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
-  message: string;
 }
 
 // Token history types

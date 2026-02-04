@@ -30,7 +30,6 @@ const NAVIGATION_PATTERNS: Array<{ pattern: RegExp; target: string }> = [
   { pattern: /^(go to|open|show|navigate to)\s+(the\s+)?sessions?(\s+page)?$/i, target: 'sessions' },
   { pattern: /^(go to|open|show|navigate to)\s+(the\s+)?activity(\s+log)?(\s+page)?$/i, target: 'activity' },
   { pattern: /^(go to|open|show|navigate to)\s+(the\s+)?clawdbot(\s+settings)?(\s+page)?$/i, target: 'clawdbot' },
-  { pattern: /^(go to|open|show|navigate to)\s+(the\s+)?tmux(\s+sessions)?(\s+page)?$/i, target: 'tmux' },
   { pattern: /^(go\s+)?home$/i, target: 'dashboard' },
 ];
 

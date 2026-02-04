@@ -171,19 +171,6 @@ import {
   DEFAULT_MCP_CONFIGS,
 } from '../services/mcp-client';
 import {
-  isTmuxAvailable,
-  getTmuxStatus,
-  listSessions as listTmuxSessions,
-  createSession as createTmuxSession,
-  attachSession as attachTmuxSession,
-  killSession as killTmuxSession,
-  getSessionHistory as getTmuxSessionHistory,
-  sendKeys as sendTmuxKeys,
-  updateSessionMeta,
-  renameSession as renameTmuxSession,
-  TmuxSession,
-} from '../services/tmux';
-import {
   getPersonalities,
   getPersonality,
   getCurrentPersonality,
@@ -239,7 +226,7 @@ AI Fat Controller is an Electron desktop app built with React/TypeScript that he
 - **Projects** - List projects, generate briefs, create deep dive plans
 - **Beads** - Work item tracking (issues)
 - **Controller** - Phat Controller for autonomous task processing
-- **Sessions** - tmux session management for Claude Code instances
+- **Sessions** - Claude Code session history and resume management
 - **GUI Testing** - Visual testing capabilities
 - **Settings** - App configuration
 
@@ -1094,50 +1081,6 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     const manager = getMCPManager();
     await manager.autoConnectEnabled();
     return manager.getConnectedServers();
-  });
-
-  // ============================================
-  // tmux Session Management handlers
-  // ============================================
-  ipcMain.handle('tmux:available', async () => {
-    return isTmuxAvailable();
-  });
-
-  ipcMain.handle('tmux:status', async () => {
-    return getTmuxStatus();
-  });
-
-  ipcMain.handle('tmux:list', async () => {
-    return listTmuxSessions();
-  });
-
-  ipcMain.handle('tmux:create', async (_, name: string, projectId?: string, cwd?: string) => {
-    return createTmuxSession(name, projectId, cwd);
-  });
-
-  ipcMain.handle('tmux:attach', async (_, name: string) => {
-    return attachTmuxSession(name);
-  });
-
-  ipcMain.handle('tmux:kill', async (_, name: string) => {
-    return killTmuxSession(name);
-  });
-
-  ipcMain.handle('tmux:history', async (_, name: string, lines?: number) => {
-    return getTmuxSessionHistory(name, lines);
-  });
-
-  ipcMain.handle('tmux:sendKeys', async (_, name: string, keys: string) => {
-    return sendTmuxKeys(name, keys);
-  });
-
-  ipcMain.handle('tmux:updateMeta', (_, name: string, updates: { projectId?: string; notes?: string }) => {
-    updateSessionMeta(name, updates);
-    return { success: true };
-  });
-
-  ipcMain.handle('tmux:rename', async (_, oldName: string, newName: string) => {
-    return renameTmuxSession(oldName, newName);
   });
 
   // ============================================

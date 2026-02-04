@@ -22,7 +22,6 @@ Web dashboard for [Gas Town](https://github.com/steveyegge/gastown) - a multi-ag
 - [Go 1.23+](https://go.dev/dl/) - for building Gas Town CLI
 - [Git 2.25+](https://git-scm.com/) - for worktree support
 - [pnpm](https://pnpm.io/) - package manager
-- [tmux 3.0+](https://github.com/tmux/tmux) - optional, for full experience
 
 ### Installation
 

@@ -10,7 +10,6 @@ import {
   Bot,
   Settings,
   Plus,
-  Terminal,
   X,
 } from 'lucide-react';
 
@@ -92,14 +91,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
       icon: <Bot size={18} />,
       action: () => navigate('/agents'),
       keywords: ['bots', 'custom'],
-    },
-    {
-      id: 'tmux',
-      title: 'Go to Tmux Sessions',
-      description: 'Manage tmux sessions',
-      icon: <Terminal size={18} />,
-      action: () => navigate('/tmux'),
-      keywords: ['terminal', 'shell'],
     },
     {
       id: 'settings',

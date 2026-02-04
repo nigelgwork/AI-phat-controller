@@ -502,29 +502,6 @@ export interface MCPTool {
   };
 }
 
-// tmux types
-export interface TmuxSession {
-  id: string;
-  name: string;
-  windows: number;
-  created: Date;
-  attached: boolean;
-  projectId?: string;
-  notes?: string;
-}
-
-export interface TmuxHistoryResult {
-  success: boolean;
-  content?: string;
-  error?: string;
-}
-
-export interface TmuxStatus {
-  available: boolean;
-  platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
-  message: string;
-}
-
 // Token history types
 export interface HourlyUsage {
   hour: number;
@@ -894,28 +871,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('mcp:callTool', serverName, toolName, args),
   autoConnectMcpServers: (): Promise<string[]> =>
     ipcRenderer.invoke('mcp:autoConnect'),
-
-  // tmux Session Management
-  isTmuxAvailable: (): Promise<boolean> =>
-    ipcRenderer.invoke('tmux:available'),
-  getTmuxStatus: (): Promise<TmuxStatus> =>
-    ipcRenderer.invoke('tmux:status'),
-  listTmuxSessions: (): Promise<TmuxSession[]> =>
-    ipcRenderer.invoke('tmux:list'),
-  createTmuxSession: (name: string, projectId?: string, cwd?: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('tmux:create', name, projectId, cwd),
-  attachTmuxSession: (name: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('tmux:attach', name),
-  killTmuxSession: (name: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('tmux:kill', name),
-  getTmuxSessionHistory: (name: string, lines?: number): Promise<TmuxHistoryResult> =>
-    ipcRenderer.invoke('tmux:history', name, lines),
-  sendTmuxKeys: (name: string, keys: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('tmux:sendKeys', name, keys),
-  updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('tmux:updateMeta', name, updates),
-  renameTmuxSession: (oldName: string, newName: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('tmux:rename', oldName, newName),
 
   // Image handling for chat
   saveImageToTemp: (base64Data: string, filename: string): Promise<{ success: boolean; path?: string; error?: string }> =>
@@ -1325,17 +1280,6 @@ declare global {
       onNtfyQuestionAnswered: (callback: (question: PendingQuestion) => void) => () => void;
       // Executor debugging
       onExecutorLog: (callback: (log: { type: string; [key: string]: unknown }) => void) => () => void;
-      // tmux Session Management
-      isTmuxAvailable: () => Promise<boolean>;
-      getTmuxStatus: () => Promise<TmuxStatus>;
-      listTmuxSessions: () => Promise<TmuxSession[]>;
-      createTmuxSession: (name: string, projectId?: string, cwd?: string) => Promise<{ success: boolean; error?: string }>;
-      attachTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
-      killTmuxSession: (name: string) => Promise<{ success: boolean; error?: string }>;
-      getTmuxSessionHistory: (name: string, lines?: number) => Promise<TmuxHistoryResult>;
-      sendTmuxKeys: (name: string, keys: string) => Promise<{ success: boolean; error?: string }>;
-      updateTmuxSessionMeta: (name: string, updates: { projectId?: string; notes?: string }) => Promise<{ success: boolean }>;
-      renameTmuxSession: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
       // Image handling for chat
       saveImageToTemp: (base64Data: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
       cleanupTempImages: () => Promise<{ success: boolean; error?: string }>;

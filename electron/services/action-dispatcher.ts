@@ -88,7 +88,7 @@ Current app state:
 - Tasks: ${stats.todo} todo, ${stats.inProgress} in progress, ${stats.done} done
 - Projects: ${projects.length} registered
 
-Available navigation: dashboard, tasks, projects, settings, controller, agents, sessions, activity, clawdbot, tmux
+Available navigation: dashboard, tasks, projects, settings, controller, agents, sessions, activity, clawdbot
 
 You can help with:
 - Creating and managing tasks
@@ -168,7 +168,6 @@ function handleNavigation(intent: Intent): ActionResult {
     sessions: '/sessions',
     activity: '/activity',
     clawdbot: '/clawdbot',
-    tmux: '/tmux',
   };
 
   const route = routes[target];
