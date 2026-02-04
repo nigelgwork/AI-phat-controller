@@ -10,9 +10,20 @@ on:
         description: 'Version to build (e.g., 0.2.1)'
         required: false
         default: ''
+      no_cache:
+        description: 'Skip cache (rebuild everything)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+
+# Pinned versions for Go tools - update these to rebuild
+env:
+  GT_VERSION: v0.5.0
+  BD_VERSION: main
+  VCPKG_ICU_VERSION: "1"  # Increment to force ICU rebuild
 
 jobs:
   build:
@@ -37,12 +48,29 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+          cache: false  # We'll handle Go caching ourselves
+
+      # Cache vcpkg/ICU installation
+      - name: Cache vcpkg ICU
+        id: cache-vcpkg
+        if: ${{ !inputs.no_cache }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/packages
+          key: vcpkg-icu-x64-windows-${{ env.VCPKG_ICU_VERSION }}
 
       - name: Install ICU via vcpkg (required for beads)
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           vcpkg install icu:x64-windows
-          # Set ICU paths using short path names to avoid spaces
+          echo "ICU installed fresh"
+
+      - name: Set ICU environment paths
+        shell: pwsh
+        run: |
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           $icuInclude = "$vcpkgRoot\installed\x64-windows\include"
           $icuLib = "$vcpkgRoot\installed\x64-windows\lib"
@@ -54,7 +82,17 @@ jobs:
           echo "ICU include: $shortInclude"
           echo "ICU lib: $shortLib"
 
+      # Cache built Go tools
+      - name: Cache Go tools
+        id: cache-go-tools
+        if: ${{ !inputs.no_cache }}
+        uses: actions/cache@v4
+        with:
+          path: resources/bin
+          key: go-tools-windows-gt-${{ env.GT_VERSION }}-bd-${{ env.BD_VERSION }}-icu-${{ env.VCPKG_ICU_VERSION }}
+
       - name: Build Go tools (gt and bd)
+        if: steps.cache-go-tools.outputs.cache-hit != 'true'
         shell: bash
         run: |
           mkdir -p resources/bin
@@ -71,9 +109,9 @@ jobs:
           echo "ICU_INCLUDE: $ICU_INCLUDE"
           echo "ICU_LIB: $ICU_LIB"
 
-          # Clone and build gt (pinned to v0.5.0 for Windows compatibility)
+          # Clone and build gt (pinned for Windows compatibility)
           # Note: gastown HEAD uses syscall.Kill which doesn't work on Windows
-          git clone --depth 1 --branch v0.5.0 https://github.com/steveyegge/gastown.git .go-build-temp/gastown
+          git clone --depth 1 --branch $GT_VERSION https://github.com/steveyegge/gastown.git .go-build-temp/gastown
           cd .go-build-temp/gastown
           go build -o ../../resources/bin/gt.exe ./cmd/gt
           cd ../..
@@ -87,6 +125,17 @@ jobs:
           # Verify builds
           ls -la resources/bin/
 
+      - name: Verify Go tools exist
+        shell: bash
+        run: |
+          echo "Checking Go tools..."
+          ls -la resources/bin/
+          if [ ! -f "resources/bin/gt.exe" ] || [ ! -f "resources/bin/bd.exe" ]; then
+            echo "ERROR: Go tools not found!"
+            exit 1
+          fi
+          echo "Go tools OK"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -95,6 +144,16 @@ jobs:
 
       - name: Build Electron
         run: pnpm run build:electron
+
+      # Cache Electron builder cache
+      - name: Cache Electron builder
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
 
       - name: Build Windows installer and publish
         env:
