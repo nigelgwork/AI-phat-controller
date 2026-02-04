@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Boxes, Package, ArrowRight, GitPullRequest, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import CollapsibleHelp from '../components/CollapsibleHelp';
-import ConvoyProgress, { ConvoyList, type Convoy } from '../components/ConvoyProgress';
+import { ConvoyList, type Convoy } from '../components/ConvoyProgress';
 
 interface ConvoyApiResponse {
   convoys?: Array<{

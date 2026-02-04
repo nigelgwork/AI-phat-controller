@@ -3,10 +3,22 @@ import { Notification } from 'electron';
 import { safeBroadcast } from '../utils/safe-ipc';
 import { createLogger } from '../utils/logger';
 import { getEncryptionKey } from '../utils/encryption-key';
+import { handleNtfyMessage, sendCommandResponse } from './ntfy-commands';
 
 const log = createLogger('Ntfy');
 
 // Types
+export interface StatusReporterConfig {
+  enabled: boolean;
+  intervalMinutes: number;       // Periodic status (0 = disabled)
+  dailySummaryTime?: string;     // e.g., "18:00"
+  notifyOnTaskStart: boolean;
+  notifyOnTaskComplete: boolean;
+  notifyOnTaskFail: boolean;
+  notifyOnApprovalNeeded: boolean;
+  notifyOnTokenWarning: boolean;
+}
+
 export interface NtfyConfig {
   enabled: boolean;
   serverUrl: string;  // User's self-hosted URL, e.g., https://ntfy.sh or https://ntfy.example.com
@@ -15,6 +27,16 @@ export interface NtfyConfig {
   priority: 'min' | 'low' | 'default' | 'high' | 'urgent';
   authToken?: string;
   enableDesktopNotifications: boolean;
+
+  // Commands
+  commandsEnabled: boolean;
+  allowedCommands?: string[];    // Whitelist (null = all commands allowed)
+
+  // Automation
+  autoStartOnTask: boolean;      // Start controller when new task added
+
+  // Status reporting
+  statusReporter: StatusReporterConfig;
 }
 
 export interface PendingQuestion {
@@ -53,12 +75,25 @@ interface NtfyStore {
   pendingQuestions: PendingQuestion[];
 }
 
+const defaultStatusReporter: StatusReporterConfig = {
+  enabled: false,
+  intervalMinutes: 0,
+  notifyOnTaskStart: false,
+  notifyOnTaskComplete: true,
+  notifyOnTaskFail: true,
+  notifyOnApprovalNeeded: true,
+  notifyOnTokenWarning: true,
+};
+
 const defaultConfig: NtfyConfig = {
   enabled: false,
   serverUrl: 'https://ntfy.sh',
   topic: 'phat-controller',
   priority: 'default',
   enableDesktopNotifications: true,
+  commandsEnabled: true,
+  autoStartOnTask: false,
+  statusReporter: defaultStatusReporter,
 };
 
 const defaults: NtfyStore = {
@@ -349,6 +384,17 @@ export function startPolling(): void {
 
           if (payload?.questionId && payload?.answer) {
             answerQuestion(payload.questionId, payload.answer);
+            continue;
+          }
+
+          // Try processing as a command if commands are enabled
+          if (config.commandsEnabled !== false) {
+            try {
+              const result = await handleNtfyMessage(event.message);
+              await sendCommandResponse(result);
+            } catch (cmdError) {
+              log.error('Error handling ntfy command:', cmdError);
+            }
           }
         } catch (err) {
           log.error('Error parsing ntfy event:', err);

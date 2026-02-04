@@ -175,7 +175,7 @@ interface ConvoyListProps {
   onBeadClick?: (convoyId: string, beadId: string) => void;
 }
 
-export function ConvoyList({ convoys, onConvoyClick, onBeadClick }: ConvoyListProps) {
+export function ConvoyList({ convoys, onConvoyClick: _onConvoyClick, onBeadClick }: ConvoyListProps) {
   if (convoys.length === 0) {
     return (
       <div className="text-center py-8 text-slate-400">

@@ -95,7 +95,7 @@ export interface DebugInfo {
 }
 
 // Task types
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'failed' | 'blocked';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface Task {
@@ -108,6 +108,16 @@ export interface Task {
   projectName?: string;
   createdAt: string;
   updatedAt: string;
+  // Retry handling
+  retryCount: number;
+  maxRetries: number;
+  lastError?: string;
+  lastAttemptAt?: string;
+  nextRetryAt?: string;
+  // Dependencies
+  blockedBy?: string[];
+  // Scheduling
+  scheduledAt?: string;
 }
 
 export interface CreateTaskInput {
@@ -117,6 +127,9 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   projectId?: string;
   projectName?: string;
+  maxRetries?: number;
+  blockedBy?: string[];
+  scheduledAt?: string;
 }
 
 export interface UpdateTaskInput {
@@ -126,6 +139,12 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   projectId?: string;
   projectName?: string;
+  retryCount?: number;
+  maxRetries?: number;
+  lastError?: string;
+  nextRetryAt?: string;
+  blockedBy?: string[];
+  scheduledAt?: string;
 }
 
 export interface TasksStats {
@@ -133,6 +152,8 @@ export interface TasksStats {
   todo: number;
   inProgress: number;
   done: number;
+  failed: number;
+  blocked: number;
   byPriority: {
     low: number;
     medium: number;
@@ -254,6 +275,17 @@ export type MayorStatus = ControllerStatus;
 export type MayorState = ControllerState;
 
 // ntfy notification types
+export interface StatusReporterConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+  dailySummaryTime?: string;
+  notifyOnTaskStart: boolean;
+  notifyOnTaskComplete: boolean;
+  notifyOnTaskFail: boolean;
+  notifyOnApprovalNeeded: boolean;
+  notifyOnTokenWarning: boolean;
+}
+
 export interface NtfyConfig {
   enabled: boolean;
   serverUrl: string;
@@ -262,6 +294,20 @@ export interface NtfyConfig {
   priority: 'min' | 'low' | 'default' | 'high' | 'urgent';
   authToken?: string;
   enableDesktopNotifications: boolean;
+  // Commands
+  commandsEnabled: boolean;
+  allowedCommands?: string[];
+  // Automation
+  autoStartOnTask: boolean;
+  // Status reporting
+  statusReporter: StatusReporterConfig;
+}
+
+// ntfy command types
+export interface NtfyCommandResult {
+  success: boolean;
+  response: string;
+  data?: Record<string, unknown>;
 }
 
 export interface PendingQuestion {
@@ -370,6 +416,51 @@ export interface DailyTokenUsage {
     input: number;
     output: number;
   };
+}
+
+// Activity Log types
+export type ActivityCategory = 'execution' | 'user_action' | 'system' | 'error';
+
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  category: ActivityCategory;
+  action: string;
+  details: Record<string, unknown>;
+  taskId?: string;
+  projectId?: string;
+  tokens?: { input: number; output: number };
+  costUsd?: number;
+  duration?: number;
+}
+
+export interface ActivitySummary {
+  totalEntries: number;
+  totalCostUsd: number;
+  totalTokens: { input: number; output: number };
+  byCategory: Record<ActivityCategory, number>;
+  averageDuration: number;
+}
+
+// Clawdbot Intent/Action types
+export type IntentType = 'navigation' | 'task_management' | 'execution' | 'query' | 'settings' | 'unknown';
+
+export interface Intent {
+  type: IntentType;
+  action: string;
+  parameters: Record<string, unknown>;
+  confidence: number;
+  originalText: string;
+}
+
+export interface ActionResult {
+  success: boolean;
+  action: string;
+  response: string;
+  data?: Record<string, unknown>;
+  navigate?: string;
+  requiresConfirmation?: boolean;
+  confirmationMessage?: string;
 }
 
 // Clawdbot personality types
@@ -532,6 +623,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startNtfyPolling: (): Promise<void> => ipcRenderer.invoke('ntfy:startPolling'),
   stopNtfyPolling: (): Promise<void> => ipcRenderer.invoke('ntfy:stopPolling'),
   testNtfyConnection: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('ntfy:testConnection'),
+  executeNtfyCommand: (message: string): Promise<NtfyCommandResult> => ipcRenderer.invoke('ntfy:executeCommand', message),
+
+  // Status Reporter
+  startStatusReporter: (): Promise<{ success: boolean }> => ipcRenderer.invoke('statusReporter:start'),
+  stopStatusReporter: (): Promise<{ success: boolean }> => ipcRenderer.invoke('statusReporter:stop'),
+  restartStatusReporter: (): Promise<{ success: boolean }> => ipcRenderer.invoke('statusReporter:restart'),
 
   // Project Briefs
   generateProjectBrief: (projectId: string, projectPath: string, projectName: string): Promise<unknown> =>
@@ -686,6 +783,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('tokenHistory:getAverage', days),
   clearTokenHistory: (): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('tokenHistory:clear'),
+
+  // Activity Log
+  getActivityLogs: (options?: {
+    category?: 'execution' | 'user_action' | 'system' | 'error';
+    taskId?: string;
+    projectId?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ActivityLogEntry[]> =>
+    ipcRenderer.invoke('activity:list', options),
+  searchActivityLogs: (query: string, filters?: {
+    category?: 'execution' | 'user_action' | 'system' | 'error';
+    taskId?: string;
+    projectId?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+  }): Promise<ActivityLogEntry[]> =>
+    ipcRenderer.invoke('activity:search', query, filters),
+  exportActivityLogs: (format: 'json' | 'csv', dateRange?: { start?: string; end?: string }): Promise<string> =>
+    ipcRenderer.invoke('activity:export', format, dateRange),
+  getActivitySummary: (dateRange?: { start?: string; end?: string }): Promise<ActivitySummary> =>
+    ipcRenderer.invoke('activity:summary', dateRange),
+  clearActivityLogs: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('activity:clear'),
+
+  // Clawdbot Intent/Action APIs
+  parseIntent: (text: string): Promise<Intent> =>
+    ipcRenderer.invoke('clawdbot:parseIntent', text),
+  dispatchAction: (intent: Intent): Promise<ActionResult> =>
+    ipcRenderer.invoke('clawdbot:dispatchAction', intent),
+  executeConfirmedAction: (confirmationMessage: string): Promise<ActionResult> =>
+    ipcRenderer.invoke('clawdbot:executeConfirmedAction', confirmationMessage),
+  getAvailableCommands: (): Promise<Array<{ category: string; examples: string[] }>> =>
+    ipcRenderer.invoke('clawdbot:getAvailableCommands'),
 
   // Event listeners
   onUpdateChecking: (callback: () => void) => {
@@ -901,6 +1035,11 @@ declare global {
       startNtfyPolling: () => Promise<void>;
       stopNtfyPolling: () => Promise<void>;
       testNtfyConnection: () => Promise<{ success: boolean; error?: string }>;
+      executeNtfyCommand: (message: string) => Promise<NtfyCommandResult>;
+      // Status Reporter
+      startStatusReporter: () => Promise<{ success: boolean }>;
+      stopStatusReporter: () => Promise<{ success: boolean }>;
+      restartStatusReporter: () => Promise<{ success: boolean }>;
       // Project Briefs
       generateProjectBrief: (projectId: string, projectPath: string, projectName: string) => Promise<unknown>;
       getProjectBrief: (projectId: string) => Promise<unknown>;

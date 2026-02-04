@@ -81,7 +81,18 @@ import {
   stopPolling,
   testNtfyConnection,
   NtfyConfig,
+  StatusReporterConfig,
 } from '../services/ntfy';
+import {
+  startStatusReporter,
+  stopStatusReporter,
+  restartStatusReporter,
+} from '../services/status-reporter';
+import {
+  handleNtfyMessage,
+  executeNtfyCommand,
+  parseNtfyCommand,
+} from '../services/ntfy-commands';
 import {
   generateProjectBrief,
   getProjectBrief,
@@ -168,6 +179,18 @@ import {
   getAverageDailyUsage,
   clearTokenHistory,
 } from '../stores/token-history';
+import {
+  logActivity,
+  getActivityLogs,
+  searchActivityLogs,
+  exportActivityLogs,
+  getActivitySummary,
+  clearActivityLogs,
+  ActivityLogQueryOptions,
+  ActivityCategory,
+} from '../stores/activity-log';
+import { parseIntent, getAvailableCommands, Intent } from '../services/intent-parser';
+import { dispatchAction, executeConfirmedAction, ActionResult } from '../services/action-dispatcher';
 
 // System prompt for Claude Code (ClawdBot)
 function getSystemPrompt(): string {
@@ -442,11 +465,73 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
       return { success: false, error: 'Task not found' };
     }
 
-    const prompt = buildTaskPrompt(task);
-    const executor = await getExecutor();
+    const executionId = `task-${id}-${Date.now()}`;
+    const startTime = Date.now();
 
-    // Run Claude Code with the task as the prompt
-    return executor.runClaude(prompt, getSystemPrompt());
+    // Update status BEFORE execution
+    updateTask(id, { status: 'in_progress' });
+
+    // Notify frontend of task status change
+    safeBroadcast('task:statusChanged', { id, status: 'in_progress' });
+
+    // Log activity start
+    logActivity('execution', 'Task execution started', {
+      taskTitle: task.title,
+      projectId: task.projectId,
+    }, {
+      taskId: id,
+      projectId: task.projectId,
+    });
+
+    try {
+      const prompt = buildTaskPrompt(task);
+      const executor = await getExecutor();
+
+      // Run Claude Code with the task as the prompt
+      const result = await executor.runClaude(prompt, getSystemPrompt(), undefined, undefined, executionId);
+
+      // Update status AFTER execution based on result
+      const newStatus = result.success ? 'done' : 'todo';
+      updateTask(id, { status: newStatus });
+
+      // Notify frontend of task status change
+      safeBroadcast('task:statusChanged', { id, status: newStatus });
+
+      // Log activity completion
+      logActivity('execution', result.success ? 'Task execution completed' : 'Task execution failed', {
+        taskTitle: task.title,
+        projectId: task.projectId,
+        success: result.success,
+        error: result.error,
+      }, {
+        taskId: id,
+        projectId: task.projectId,
+        tokens: result.tokenUsage ? { input: result.tokenUsage.inputTokens, output: result.tokenUsage.outputTokens } : undefined,
+        duration: Date.now() - startTime,
+      });
+
+      return result;
+    } catch (error) {
+      // Revert status on error
+      updateTask(id, { status: 'todo' });
+      safeBroadcast('task:statusChanged', { id, status: 'todo' });
+
+      // Log activity error
+      logActivity('error', 'Task execution error', {
+        taskTitle: task.title,
+        projectId: task.projectId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, {
+        taskId: id,
+        projectId: task.projectId,
+        duration: Date.now() - startTime,
+      });
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
   });
 
   // Controller (Phat Controller) handlers
@@ -455,18 +540,22 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle('controller:activate', async () => {
+    logActivity('system', 'Controller activated', {});
     return activateController();
   });
 
   ipcMain.handle('controller:deactivate', async () => {
+    logActivity('system', 'Controller deactivated', {});
     return deactivateController();
   });
 
   ipcMain.handle('controller:pause', async () => {
+    logActivity('system', 'Controller paused', {});
     return pauseController();
   });
 
   ipcMain.handle('controller:resume', async () => {
+    logActivity('system', 'Controller resumed', {});
     return resumeController();
   });
 
@@ -475,10 +564,12 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle('controller:approveRequest', async (_, id: string) => {
+    logActivity('user_action', 'Approval request approved', { requestId: id });
     return approveRequest(id);
   });
 
   ipcMain.handle('controller:rejectRequest', async (_, id: string, reason?: string) => {
+    logActivity('user_action', 'Approval request rejected', { requestId: id, reason });
     return rejectRequest(id, reason);
   });
 
@@ -634,6 +725,27 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('ntfy:testConnection', async () => {
     return testNtfyConnection();
+  });
+
+  // ntfy command system
+  ipcMain.handle('ntfy:executeCommand', async (_, message: string) => {
+    return handleNtfyMessage(message);
+  });
+
+  // Status Reporter handlers
+  ipcMain.handle('statusReporter:start', () => {
+    startStatusReporter();
+    return { success: true };
+  });
+
+  ipcMain.handle('statusReporter:stop', () => {
+    stopStatusReporter();
+    return { success: true };
+  });
+
+  ipcMain.handle('statusReporter:restart', () => {
+    restartStatusReporter();
+    return { success: true };
   });
 
   // Project Briefs handlers
@@ -1003,5 +1115,55 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('tokenHistory:clear', () => {
     clearTokenHistory();
     return { success: true };
+  });
+
+  // ============================================
+  // Activity Log handlers
+  // ============================================
+  ipcMain.handle('activity:log', (_, category: ActivityCategory, action: string, details?: Record<string, unknown>, options?: {
+    taskId?: string;
+    projectId?: string;
+    tokens?: { input: number; output: number };
+    duration?: number;
+  }) => {
+    return logActivity(category, action, details || {}, options);
+  });
+
+  ipcMain.handle('activity:list', (_, options?: ActivityLogQueryOptions) => {
+    return getActivityLogs(options || {});
+  });
+
+  ipcMain.handle('activity:search', (_, query: string, filters?: ActivityLogQueryOptions) => {
+    return searchActivityLogs(query, filters || {});
+  });
+
+  ipcMain.handle('activity:export', (_, format: 'json' | 'csv', dateRange?: { start?: string; end?: string }) => {
+    return exportActivityLogs(format, dateRange);
+  });
+
+  ipcMain.handle('activity:summary', (_, dateRange?: { start?: string; end?: string }) => {
+    return getActivitySummary(dateRange);
+  });
+
+  ipcMain.handle('activity:clear', () => {
+    clearActivityLogs();
+    return { success: true };
+  });
+
+  // Clawdbot Intent/Action handlers
+  ipcMain.handle('clawdbot:parseIntent', (_, text: string) => {
+    return parseIntent(text);
+  });
+
+  ipcMain.handle('clawdbot:dispatchAction', async (_, intent: Intent) => {
+    return dispatchAction(intent);
+  });
+
+  ipcMain.handle('clawdbot:executeConfirmedAction', async (_, confirmationMessage: string) => {
+    return executeConfirmedAction(confirmationMessage);
+  });
+
+  ipcMain.handle('clawdbot:getAvailableCommands', () => {
+    return getAvailableCommands();
   });
 }

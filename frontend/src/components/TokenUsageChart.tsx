@@ -185,7 +185,7 @@ export default function TokenUsageChart({
         <div className="mt-4 pt-4 border-t border-slate-700">
           <div className="text-xs text-slate-400 mb-2">7-Day Trend</div>
           <div className="flex items-end gap-1 h-12">
-            {dailyData.slice(-7).map((day, index) => {
+            {dailyData.slice(-7).map((day) => {
               const total = day.input + day.output;
               const maxDaily = Math.max(...dailyData.map(d => d.input + d.output), 1);
               const heightPercent = (total / maxDaily) * 100;

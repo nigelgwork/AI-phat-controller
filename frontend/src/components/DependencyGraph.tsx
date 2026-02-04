@@ -202,8 +202,8 @@ export default function DependencyGraph({ nodes: inputNodes, onNodeClick, classN
     return { flowNodes, flowEdges };
   }, [inputNodes]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
+  const [nodes, , onNodesChange] = useNodesState(flowNodes);
+  const [edges, , onEdgesChange] = useEdgesState(flowEdges);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

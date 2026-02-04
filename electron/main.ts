@@ -6,8 +6,10 @@ import { registerIpcHandlers } from './ipc/handlers';
 import { initAutoUpdater, checkForUpdates, stopAutoUpdater } from './services/auto-updater';
 import { initControllerStore, getControllerState, pauseController, resumeController } from './services/controller';
 import { initNtfyStore, startPolling as startNtfyPolling, stopPolling as stopNtfyPolling, getNtfyConfig } from './services/ntfy';
+import { startStatusReporter, stopStatusReporter } from './services/status-reporter';
 import { initBriefsStore } from './services/project-briefs';
 import { initTokenHistoryStore } from './stores/token-history';
+import { initActivityLogStore } from './stores/activity-log';
 import { createLogger, configureLogger } from './utils/logger';
 
 const log = createLogger('Main');
@@ -213,10 +215,17 @@ if (!gotTheLock) {
     // Initialize token history store
     initTokenHistoryStore();
 
+    // Initialize activity log store
+    initActivityLogStore();
+
     // Start ntfy polling if enabled
     const ntfyConfig = getNtfyConfig();
     if (ntfyConfig.enabled) {
       startNtfyPolling();
+      // Start status reporter if configured
+      if (ntfyConfig.statusReporter?.enabled) {
+        startStatusReporter();
+      }
     }
 
     // Initialize executor based on settings
@@ -257,8 +266,9 @@ app.on('before-quit', () => {
     trayUpdateInterval = null;
   }
 
-  // Stop ntfy polling
+  // Stop ntfy polling and status reporter
   stopNtfyPolling();
+  stopStatusReporter();
 
   // Stop auto-updater
   stopAutoUpdater();

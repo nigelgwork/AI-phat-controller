@@ -440,6 +440,142 @@ function NtfyCard() {
           <p className="text-xs text-slate-500 mt-1">Leave empty for public topics</p>
         </div>
       </div>
+
+      {/* Commands & Automation Section */}
+      <div className="mt-6 pt-6 border-t border-slate-700">
+        <h4 className="text-sm font-medium text-white mb-4">Commands & Automation</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Enable Commands */}
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm text-white">Enable Remote Commands</p>
+                <p className="text-xs text-slate-400">Allow /status, /pause, /resume etc. via ntfy</p>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={localConfig.commandsEnabled !== false}
+                  onChange={(e) => setLocalConfig({ ...localConfig, commandsEnabled: e.target.checked })}
+                  disabled={!localConfig.enabled}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500 disabled:opacity-50"></div>
+              </div>
+            </label>
+          </div>
+
+          {/* Auto-start on Task */}
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm text-white">Auto-Start on Task</p>
+                <p className="text-xs text-slate-400">Start controller when new task is added</p>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={localConfig.autoStartOnTask || false}
+                  onChange={(e) => setLocalConfig({ ...localConfig, autoStartOnTask: e.target.checked })}
+                  disabled={!localConfig.enabled}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500 disabled:opacity-50"></div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Reporter Section */}
+      <div className="mt-6 pt-6 border-t border-slate-700">
+        <h4 className="text-sm font-medium text-white mb-4">Status Reporter</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Enable Status Reporter */}
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm text-white">Enable Status Reporter</p>
+                <p className="text-xs text-slate-400">Periodic updates & event notifications</p>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={localConfig.statusReporter?.enabled || false}
+                  onChange={(e) => setLocalConfig({
+                    ...localConfig,
+                    statusReporter: { ...localConfig.statusReporter, enabled: e.target.checked } as NtfyConfig['statusReporter']
+                  })}
+                  disabled={!localConfig.enabled}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500 disabled:opacity-50"></div>
+              </div>
+            </label>
+          </div>
+
+          {/* Status Interval */}
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Status Interval (minutes)</label>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              value={localConfig.statusReporter?.intervalMinutes || 0}
+              onChange={(e) => setLocalConfig({
+                ...localConfig,
+                statusReporter: { ...localConfig.statusReporter, intervalMinutes: parseInt(e.target.value) || 0 } as NtfyConfig['statusReporter']
+              })}
+              disabled={!localConfig.enabled || !localConfig.statusReporter?.enabled}
+              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+            />
+            <p className="text-xs text-slate-500 mt-1">0 to disable periodic updates</p>
+          </div>
+
+          {/* Daily Summary Time */}
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Daily Summary Time</label>
+            <input
+              type="time"
+              value={localConfig.statusReporter?.dailySummaryTime || ''}
+              onChange={(e) => setLocalConfig({
+                ...localConfig,
+                statusReporter: { ...localConfig.statusReporter, dailySummaryTime: e.target.value || undefined } as NtfyConfig['statusReporter']
+              })}
+              disabled={!localConfig.enabled || !localConfig.statusReporter?.enabled}
+              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+            />
+            <p className="text-xs text-slate-500 mt-1">Leave empty to disable daily summary</p>
+          </div>
+
+          {/* Event Notifications */}
+          <div className="p-4 bg-slate-900 rounded-lg">
+            <p className="text-xs text-slate-400 mb-3 uppercase tracking-wide">Event Notifications</p>
+            <div className="space-y-2">
+              {[
+                { key: 'notifyOnTaskComplete', label: 'Task Completed' },
+                { key: 'notifyOnTaskFail', label: 'Task Failed' },
+                { key: 'notifyOnApprovalNeeded', label: 'Approval Needed' },
+                { key: 'notifyOnTokenWarning', label: 'Token Warning' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localConfig.statusReporter?.[key as keyof typeof localConfig.statusReporter] !== false}
+                    onChange={(e) => setLocalConfig({
+                      ...localConfig,
+                      statusReporter: { ...localConfig.statusReporter, [key]: e.target.checked } as NtfyConfig['statusReporter']
+                    })}
+                    disabled={!localConfig.enabled || !localConfig.statusReporter?.enabled}
+                    className="w-4 h-4 bg-slate-700 border-slate-600 rounded text-cyan-500 focus:ring-cyan-500 focus:ring-offset-slate-900"
+                  />
+                  <span className="text-sm text-slate-300">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

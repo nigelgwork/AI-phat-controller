@@ -6,7 +6,7 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'failed' | 'blocked';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface Task {
@@ -19,6 +19,19 @@ export interface Task {
   projectName?: string;
   createdAt: string;
   updatedAt: string;
+
+  // Retry handling
+  retryCount: number;
+  maxRetries: number;           // Default: 3
+  lastError?: string;
+  lastAttemptAt?: string;
+  nextRetryAt?: string;         // Exponential backoff
+
+  // Dependencies
+  blockedBy?: string[];         // Task IDs that must complete first
+
+  // Scheduling
+  scheduledAt?: string;         // Don't run before this time
 }
 
 export interface TasksStore {
@@ -66,6 +79,9 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   projectId?: string;
   projectName?: string;
+  maxRetries?: number;
+  blockedBy?: string[];
+  scheduledAt?: string;
 }
 
 export function createTask(input: CreateTaskInput): Task {
@@ -82,6 +98,10 @@ export function createTask(input: CreateTaskInput): Task {
     projectName: input.projectName,
     createdAt: now,
     updatedAt: now,
+    retryCount: 0,
+    maxRetries: input.maxRetries ?? 3,
+    blockedBy: input.blockedBy,
+    scheduledAt: input.scheduledAt,
   };
 
   const tasks = listTasks();
@@ -98,6 +118,13 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   projectId?: string;
   projectName?: string;
+  retryCount?: number;
+  maxRetries?: number;
+  lastError?: string;
+  lastAttemptAt?: string;
+  nextRetryAt?: string;
+  blockedBy?: string[];
+  scheduledAt?: string;
 }
 
 export function updateTask(id: string, updates: UpdateTaskInput): Task | null {
@@ -143,6 +170,8 @@ export interface TasksStats {
   todo: number;
   inProgress: number;
   done: number;
+  failed: number;
+  blocked: number;
   byPriority: {
     low: number;
     medium: number;
@@ -158,6 +187,8 @@ export function getTasksStats(): TasksStats {
     todo: 0,
     inProgress: 0,
     done: 0,
+    failed: 0,
+    blocked: 0,
     byPriority: {
       low: 0,
       medium: 0,
@@ -175,6 +206,12 @@ export function getTasksStats(): TasksStats {
         break;
       case 'done':
         stats.done++;
+        break;
+      case 'failed':
+        stats.failed++;
+        break;
+      case 'blocked':
+        stats.blocked++;
         break;
     }
 
@@ -196,4 +233,202 @@ export function buildTaskPrompt(task: Task): string {
   }
 
   return prompt;
+}
+
+/**
+ * Calculate exponential backoff delay for retry
+ * Returns delay in milliseconds: 1min, 2min, 4min, 8min, 16min max
+ */
+export function calculateRetryDelay(retryCount: number): number {
+  const baseDelay = 60 * 1000; // 1 minute
+  const maxDelay = 16 * 60 * 1000; // 16 minutes
+  return Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
+}
+
+/**
+ * Schedule a retry for a failed task with exponential backoff
+ */
+export function scheduleRetry(id: string, error: string): Task | null {
+  const task = getTaskById(id);
+  if (!task) return null;
+
+  const newRetryCount = task.retryCount + 1;
+
+  if (newRetryCount >= task.maxRetries) {
+    // Max retries exceeded - mark as failed
+    return updateTask(id, {
+      status: 'failed',
+      retryCount: newRetryCount,
+      lastError: error,
+      lastAttemptAt: new Date().toISOString(),
+    });
+  }
+
+  // Schedule retry with exponential backoff
+  const delay = calculateRetryDelay(newRetryCount);
+  const nextRetryAt = new Date(Date.now() + delay).toISOString();
+
+  return updateTask(id, {
+    status: 'todo', // Back to todo for retry
+    retryCount: newRetryCount,
+    lastError: error,
+    lastAttemptAt: new Date().toISOString(),
+    nextRetryAt,
+  });
+}
+
+/**
+ * Get tasks that are not blocked by uncompleted dependencies
+ */
+export function getUnblockedTasks(): Task[] {
+  const tasks = listTasks();
+  const completedIds = new Set(
+    tasks.filter(t => t.status === 'done').map(t => t.id)
+  );
+
+  return tasks.filter(task => {
+    if (!task.blockedBy || task.blockedBy.length === 0) {
+      return true;
+    }
+    // Task is unblocked if all dependencies are completed
+    return task.blockedBy.every(depId => completedIds.has(depId));
+  });
+}
+
+/**
+ * Update task status to 'blocked' if it has unfinished dependencies
+ */
+export function updateBlockedStatus(): void {
+  const tasks = listTasks();
+  const completedIds = new Set(
+    tasks.filter(t => t.status === 'done').map(t => t.id)
+  );
+
+  for (const task of tasks) {
+    // Skip tasks that are done or actively in progress
+    if (task.status === 'done' || task.status === 'in_progress') {
+      continue;
+    }
+
+    if (task.blockedBy && task.blockedBy.length > 0) {
+      const hasUnfinishedDeps = task.blockedBy.some(depId => !completedIds.has(depId));
+      if (hasUnfinishedDeps && task.status !== 'blocked') {
+        // Task has unfinished dependencies - mark as blocked
+        updateTask(task.id, { status: 'blocked' });
+      } else if (!hasUnfinishedDeps && task.status === 'blocked') {
+        // Dependencies are now complete - unblock the task
+        updateTask(task.id, { status: 'todo' });
+      }
+    }
+  }
+}
+
+/**
+ * Get the next task to execute based on smart selection criteria:
+ * 1. Filter to status === 'todo'
+ * 2. Exclude tasks with unfinished blockedBy dependencies
+ * 3. Exclude tasks in retry backoff (nextRetryAt > now)
+ * 4. Exclude scheduled tasks (scheduledAt > now)
+ * 5. Sort by priority (high → medium → low), then by creation date
+ */
+export function getNextExecutableTask(): Task | null {
+  const tasks = listTasks();
+  const now = new Date();
+  const completedIds = new Set(
+    tasks.filter(t => t.status === 'done').map(t => t.id)
+  );
+
+  // Filter to executable tasks
+  const executable = tasks.filter(task => {
+    // Must be in todo status
+    if (task.status !== 'todo') return false;
+
+    // Check dependencies - all must be completed
+    if (task.blockedBy && task.blockedBy.length > 0) {
+      const hasUnfinishedDeps = task.blockedBy.some(depId => !completedIds.has(depId));
+      if (hasUnfinishedDeps) return false;
+    }
+
+    // Check retry backoff
+    if (task.nextRetryAt && new Date(task.nextRetryAt) > now) {
+      return false;
+    }
+
+    // Check scheduled time
+    if (task.scheduledAt && new Date(task.scheduledAt) > now) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (executable.length === 0) return null;
+
+  // Sort by priority (high first) then by creation date (oldest first)
+  const priorityOrder: Record<TaskPriority, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
+
+  executable.sort((a, b) => {
+    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+    if (priorityDiff !== 0) return priorityDiff;
+
+    // Same priority - oldest first
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+
+  return executable[0];
+}
+
+/**
+ * Get time until the next task becomes executable (for scheduling)
+ * Returns null if there are tasks ready now, or no tasks to wait for
+ */
+export function getNextExecutableTime(): Date | null {
+  const tasks = listTasks();
+  const now = new Date();
+  const completedIds = new Set(
+    tasks.filter(t => t.status === 'done').map(t => t.id)
+  );
+
+  let nextTime: Date | null = null;
+
+  for (const task of tasks) {
+    if (task.status !== 'todo') continue;
+
+    // Check dependencies
+    if (task.blockedBy && task.blockedBy.length > 0) {
+      const hasUnfinishedDeps = task.blockedBy.some(depId => !completedIds.has(depId));
+      if (hasUnfinishedDeps) continue; // Can't predict when deps will complete
+    }
+
+    // Check retry backoff
+    if (task.nextRetryAt) {
+      const retryTime = new Date(task.nextRetryAt);
+      if (retryTime > now) {
+        if (!nextTime || retryTime < nextTime) {
+          nextTime = retryTime;
+        }
+        continue;
+      }
+    }
+
+    // Check scheduled time
+    if (task.scheduledAt) {
+      const scheduledTime = new Date(task.scheduledAt);
+      if (scheduledTime > now) {
+        if (!nextTime || scheduledTime < nextTime) {
+          nextTime = scheduledTime;
+        }
+        continue;
+      }
+    }
+
+    // This task is ready now
+    return null;
+  }
+
+  return nextTime;
 }

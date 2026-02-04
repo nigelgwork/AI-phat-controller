@@ -1,8 +1,9 @@
 import Store from 'electron-store';
 import { Notification, app } from 'electron';
 import { getExecutor } from './executor';
-import { listTasks, updateTask, getTaskById } from './tasks';
+import { listTasks, updateTask, getTaskById, getNextExecutableTask, scheduleRetry, getTasksStats } from './tasks';
 import type { Task } from './tasks';
+import { sendNotification, getNtfyConfig } from './ntfy';
 import { safeBroadcast } from '../utils/safe-ipc';
 import { recordHourlyUsage } from '../stores/token-history';
 import { createLogger } from '../utils/logger';
@@ -665,16 +666,21 @@ async function processTask(task: Task): Promise<void> {
     }
 
     if (!result.success) {
-      // Task failed
+      // Task failed - schedule retry or mark as failed
+      const errorMsg = result.error || 'Unknown error';
+      const updatedTask = scheduleRetry(task.id, errorMsg);
+
       addActionLog({
         id: generateId(),
         taskId: task.id,
         taskTitle: task.title,
         actionType: 'error',
-        description: 'Task execution failed',
+        description: updatedTask?.status === 'failed'
+          ? `Task failed after ${task.retryCount + 1} attempts`
+          : `Task failed, retry ${(task.retryCount || 0) + 1}/${task.maxRetries || 3} scheduled`,
         autoApproved: true,
         result: 'failure',
-        output: result.error,
+        output: errorMsg,
         duration,
         timestamp: new Date().toISOString(),
       });
@@ -682,6 +688,18 @@ async function processTask(task: Task): Promise<void> {
       updateState({
         errorCount: getControllerState().errorCount + 1,
       });
+
+      // Notify via ntfy if task failed permanently
+      if (updatedTask?.status === 'failed') {
+        const ntfyConfig = getNtfyConfig();
+        if (ntfyConfig.enabled) {
+          await sendNotification(
+            'Task Failed',
+            `"${task.title}" failed after ${task.retryCount + 1} attempts: ${errorMsg}`,
+            { priority: 'high', tags: ['x', 'task-failed'] }
+          );
+        }
+      }
 
       clearProgress();
       return;
@@ -693,7 +711,8 @@ async function processTask(task: Task): Promise<void> {
     const classification = classifyAction(response, task);
 
     if (classification.requiresApproval) {
-      // Create approval request
+      // Create approval request with expiry time (30 minutes default)
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       const request: ApprovalRequest = {
         id: generateId(),
         taskId: task.id,
@@ -703,9 +722,50 @@ async function processTask(task: Task): Promise<void> {
         details: response,
         status: 'pending',
         createdAt: new Date().toISOString(),
+        expiresAt,
       };
 
       addApprovalRequest(request);
+
+      // Send ntfy notification with action buttons
+      const ntfyConfig = getNtfyConfig();
+      if (ntfyConfig.enabled) {
+        const responseTopic = ntfyConfig.responseTopic || ntfyConfig.topic + '-response';
+        await sendNotification(
+          `Approval Required: ${classification.approvalType?.replace('_', ' ')}`,
+          `${task.title}\n\n${classification.description}`,
+          {
+            priority: 'high',
+            tags: ['warning', 'approval'],
+            actions: [
+              {
+                action: 'http',
+                label: 'Approve',
+                url: `${ntfyConfig.serverUrl}/${responseTopic}`,
+                method: 'POST',
+                body: JSON.stringify({ command: '/approve', requestId: request.id }),
+                clear: true,
+              },
+              {
+                action: 'http',
+                label: 'Reject',
+                url: `${ntfyConfig.serverUrl}/${responseTopic}`,
+                method: 'POST',
+                body: JSON.stringify({ command: '/reject', requestId: request.id }),
+                clear: true,
+              },
+              {
+                action: 'http',
+                label: 'Skip',
+                url: `${ntfyConfig.serverUrl}/${responseTopic}`,
+                method: 'POST',
+                body: JSON.stringify({ command: '/skip', requestId: request.id }),
+                clear: true,
+              },
+            ],
+          }
+        );
+      }
 
       updateState({
         status: 'waiting_approval',
@@ -744,16 +804,22 @@ async function processTask(task: Task): Promise<void> {
 
   } catch (error) {
     const duration = Date.now() - startTime;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+
+    // Schedule retry or mark as failed
+    const updatedTask = scheduleRetry(task.id, errorMsg);
 
     addActionLog({
       id: generateId(),
       taskId: task.id,
       taskTitle: task.title,
       actionType: 'error',
-      description: 'Task execution error',
+      description: updatedTask?.status === 'failed'
+        ? `Task error after ${task.retryCount + 1} attempts`
+        : `Task error, retry ${(task.retryCount || 0) + 1}/${task.maxRetries || 3} scheduled`,
       autoApproved: true,
       result: 'failure',
-      output: error instanceof Error ? error.message : String(error),
+      output: errorMsg,
       duration,
       timestamp: new Date().toISOString(),
     });
@@ -761,6 +827,18 @@ async function processTask(task: Task): Promise<void> {
     updateState({
       errorCount: getControllerState().errorCount + 1,
     });
+
+    // Notify via ntfy if task failed permanently
+    if (updatedTask?.status === 'failed') {
+      const ntfyConfig = getNtfyConfig();
+      if (ntfyConfig.enabled) {
+        await sendNotification(
+          'Task Failed',
+          `"${task.title}" failed after ${task.retryCount + 1} attempts: ${errorMsg}`,
+          { priority: 'high', tags: ['x', 'task-failed'] }
+        );
+      }
+    }
 
     clearProgress();
   }
@@ -791,19 +869,24 @@ async function processNextTask(): Promise<void> {
     return;
   }
 
-  // Find next todo task
-  const tasks = listTasks();
-  const todoTask = tasks.find(t => t.status === 'todo');
+  // Use smart task selection instead of simple FIFO
+  const nextTask = getNextExecutableTask();
 
-  if (!todoTask) {
+  if (!nextTask) {
+    const stats = getTasksStats();
+    const pendingCount = stats.todo + stats.blocked;
+    const action = pendingCount > 0
+      ? `Waiting for ${pendingCount} task(s) - blocked or scheduled`
+      : 'No tasks in queue';
+
     updateState({
       currentTaskId: null,
-      currentAction: 'No tasks in queue',
+      currentAction: action,
     });
     return;
   }
 
-  await processTask(todoTask);
+  await processTask(nextTask);
 }
 
 // Start processing loop

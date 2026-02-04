@@ -185,7 +185,7 @@ export interface TownEvent {
 }
 
 // Task Types
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'failed' | 'blocked';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface Task {
@@ -198,6 +198,16 @@ export interface Task {
   projectName?: string;
   createdAt: string;
   updatedAt: string;
+  // Retry handling
+  retryCount: number;
+  maxRetries: number;
+  lastError?: string;
+  lastAttemptAt?: string;
+  nextRetryAt?: string;
+  // Dependencies
+  blockedBy?: string[];
+  // Scheduling
+  scheduledAt?: string;
 }
 
 export interface CreateTaskInput {
@@ -207,6 +217,9 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   projectId?: string;
   projectName?: string;
+  maxRetries?: number;
+  blockedBy?: string[];
+  scheduledAt?: string;
 }
 
 export interface UpdateTaskInput {
@@ -216,6 +229,12 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   projectId?: string;
   projectName?: string;
+  retryCount?: number;
+  maxRetries?: number;
+  lastError?: string;
+  nextRetryAt?: string;
+  blockedBy?: string[];
+  scheduledAt?: string;
 }
 
 export interface TasksStats {
@@ -223,6 +242,8 @@ export interface TasksStats {
   todo: number;
   inProgress: number;
   done: number;
+  failed: number;
+  blocked: number;
   byPriority: {
     low: number;
     medium: number;
@@ -256,6 +277,7 @@ export interface AppSettings {
     distro?: string;
   };
   gastownPath: string;
+  logFilePath?: string;
   theme: 'dark' | 'light' | 'system';
   startMinimized: boolean;
   minimizeToTray: boolean;
@@ -368,6 +390,17 @@ export interface ConversationSession {
 }
 
 // ntfy notification types
+export interface StatusReporterConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+  dailySummaryTime?: string;
+  notifyOnTaskStart: boolean;
+  notifyOnTaskComplete: boolean;
+  notifyOnTaskFail: boolean;
+  notifyOnApprovalNeeded: boolean;
+  notifyOnTokenWarning: boolean;
+}
+
 export interface NtfyConfig {
   enabled: boolean;
   serverUrl: string;
@@ -376,6 +409,19 @@ export interface NtfyConfig {
   priority: 'min' | 'low' | 'default' | 'high' | 'urgent';
   authToken?: string;
   enableDesktopNotifications: boolean;
+  // Commands
+  commandsEnabled: boolean;
+  allowedCommands?: string[];
+  // Automation
+  autoStartOnTask: boolean;
+  // Status reporting
+  statusReporter: StatusReporterConfig;
+}
+
+export interface NtfyCommandResult {
+  success: boolean;
+  response: string;
+  data?: Record<string, unknown>;
 }
 
 export interface PendingQuestion {
