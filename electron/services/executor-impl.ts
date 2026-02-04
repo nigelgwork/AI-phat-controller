@@ -206,8 +206,20 @@ class WindowsExecutor implements IExecutor {
       log.info('[Executor] Continuing last session');
     }
 
+    // Write system prompt to temp file to avoid Windows shell mangling
+    let systemPromptFile: string | null = null;
     if (systemPrompt) {
-      args.push('--system-prompt', systemPrompt);
+      try {
+        const tempDir = app.getPath('temp');
+        systemPromptFile = path.join(tempDir, `claude-system-prompt-${Date.now()}.txt`);
+        fs.writeFileSync(systemPromptFile, systemPrompt, 'utf-8');
+        args.push('--append-system-prompt', systemPromptFile);
+        log.info('[Executor] System prompt written to temp file:', systemPromptFile);
+      } catch (err) {
+        log.error('[Executor] Failed to write system prompt file:', err);
+        // Fallback to inline (may still fail on Windows)
+        args.push('--system-prompt', systemPrompt);
+      }
     }
 
     // Add image files if provided
@@ -225,7 +237,18 @@ class WindowsExecutor implements IExecutor {
     log.info('[Executor] Windows cwd:', cwd, '(from:', projectPath, ')');
 
     // Use spawn without stdin since prompt is passed as argument
-    return this.spawnCommandWithJsonParsing(this.claudePath, args, cwd, start, 120000, executionId);  // 2 min idle timeout
+    const result = await this.spawnCommandWithJsonParsing(this.claudePath, args, cwd, start, 120000, executionId);  // 2 min idle timeout
+
+    // Clean up temp file
+    if (systemPromptFile) {
+      try {
+        fs.unlinkSync(systemPromptFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
+    return result;
   }
 
   private spawnWithStdin(
@@ -907,8 +930,22 @@ class WslExecutor implements IExecutor {
       log.info('[Executor] WSL continuing last session');
     }
 
+    // Write system prompt to temp file to avoid shell escaping issues
+    let systemPromptFile: string | null = null;
+    let wslSystemPromptFile: string | null = null;
     if (systemPrompt) {
-      args.push('--system-prompt', systemPrompt);
+      try {
+        const tempDir = app.getPath('temp');
+        systemPromptFile = path.join(tempDir, `claude-system-prompt-${Date.now()}.txt`);
+        fs.writeFileSync(systemPromptFile, systemPrompt, 'utf-8');
+        wslSystemPromptFile = this.toWslPath(systemPromptFile);
+        args.push('--append-system-prompt', wslSystemPromptFile);
+        log.info('[Executor] WSL system prompt written to:', wslSystemPromptFile);
+      } catch (err) {
+        log.error('[Executor] Failed to write system prompt file:', err);
+        // Fallback to inline
+        args.push('--system-prompt', systemPrompt);
+      }
     }
 
     // Add image files if provided (convert to WSL paths)
@@ -924,7 +961,18 @@ class WslExecutor implements IExecutor {
     // Convert project path to WSL path if provided
     const wslCwd = projectPath ? this.toWslPath(projectPath) : this.wslGastownPath;
 
-    return this.wslExecCommandWithJsonParsing('claude', args, start, 120000, wslCwd, executionId);  // 2 min idle timeout
+    const result = await this.wslExecCommandWithJsonParsing('claude', args, start, 120000, wslCwd, executionId);  // 2 min idle timeout
+
+    // Clean up temp file
+    if (systemPromptFile) {
+      try {
+        fs.unlinkSync(systemPromptFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
+    return result;
   }
 
   // Parse JSON stream output from Claude Code in WSL
