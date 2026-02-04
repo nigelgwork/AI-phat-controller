@@ -17,6 +17,7 @@ import {
   DollarSign,
   Clock,
   FileText,
+  FolderGit,
 } from 'lucide-react';
 import type { ActivityCategory } from '../types/electron.d';
 
@@ -25,6 +26,7 @@ const CATEGORY_CONFIG: Record<ActivityCategory, { label: string; icon: typeof Ac
   user_action: { label: 'User Action', icon: User, color: 'text-green-400 bg-green-500/20' },
   system: { label: 'System', icon: Settings, color: 'text-blue-400 bg-blue-500/20' },
   error: { label: 'Error', icon: AlertTriangle, color: 'text-red-400 bg-red-500/20' },
+  project: { label: 'Project', icon: FolderGit, color: 'text-purple-400 bg-purple-500/20' },
 };
 
 export default function ActivityLog() {
