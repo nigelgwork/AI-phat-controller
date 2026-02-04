@@ -18,6 +18,8 @@ export {
   ExecuteResult,
   ModeStatus,
   DebugInfo,
+  SessionOptions,
+  ExecuteResultWithSession,
 
   // Process management
   cancelExecution,

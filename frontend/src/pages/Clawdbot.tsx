@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Sparkles,
   Mic,
@@ -12,9 +12,12 @@ import {
   Settings,
   Bot,
   Trash2,
+  History,
+  ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 import { useTTS, TTSToggle } from '../components/TTSOutput';
-import type { Intent, ActionResult, ClawdbotMessage } from '../types/electron.d';
+import type { Intent, ActionResult, ClawdbotMessage, ClaudeCodeSession } from '../types/electron.d';
 
 interface Message {
   id: string;
@@ -46,11 +49,23 @@ export default function Clawdbot() {
   const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
   const [availableCommands, setAvailableCommands] = useState<CommandCategory[]>([]);
 
+  // Session resume state
+  const [showSessionMenu, setShowSessionMenu] = useState(false);
+  const [activeClaudeSession, setActiveClaudeSession] = useState<string | null>(null);
+  const [isInResumedSession, setIsInResumedSession] = useState(false);
+
   // TTS hook
   const { speak, stop: stopSpeaking, isSpeaking } = useTTS({
     enabled: ttsEnabled,
     rate: 1.0,
     pitch: 1.0,
+  });
+
+  // Query for recent Claude sessions
+  const { data: recentSessions = [] } = useQuery({
+    queryKey: ['claude-sessions'],
+    queryFn: () => window.electronAPI?.getRecentClaudeSessions?.(5) as Promise<ClaudeCodeSession[]>,
+    staleTime: 30000, // Refresh every 30 seconds
   });
 
   // Speech recognition
@@ -159,8 +174,8 @@ export default function Clawdbot() {
 
   // Dispatch action mutation
   const dispatchActionMutation = useMutation({
-    mutationFn: async (intent: Intent) => {
-      const result = await window.electronAPI?.dispatchAction?.(intent);
+    mutationFn: async ({ intent, sessionId }: { intent: Intent; sessionId?: string }) => {
+      const result = await window.electronAPI?.dispatchAction?.(intent, sessionId);
       return result;
     },
     onSuccess: (result) => {
@@ -261,7 +276,11 @@ export default function Clawdbot() {
 
         // Dispatch action - handles both known and unknown intents
         // Unknown intents are now routed to Claude Code
-        const result = await dispatchActionMutation.mutateAsync(intent);
+        // Pass active session ID to resume Claude conversation if applicable
+        const result = await dispatchActionMutation.mutateAsync({
+          intent,
+          sessionId: activeClaudeSession || undefined,
+        });
         if (result) {
           const usedClaude = result.data?.usedClaudeCode === true;
           addAssistantMessage(result.response, result, usedClaude);
@@ -271,7 +290,7 @@ export default function Clawdbot() {
       console.error('Error processing command:', error);
       addAssistantMessage("Sorry, I encountered an error processing your request.", undefined, false);
     }
-  }, [inputText, pendingConfirmation, parseIntentMutation, dispatchActionMutation, queryClient, stopSpeaking]);
+  }, [inputText, pendingConfirmation, parseIntentMutation, dispatchActionMutation, queryClient, stopSpeaking, activeClaudeSession]);
 
   // Add assistant message
   const addAssistantMessage = (content: string, action?: ActionResult, usedClaudeCode?: boolean) => {
@@ -326,6 +345,52 @@ export default function Clawdbot() {
     }
   };
 
+  // Resume a Claude session
+  const handleResumeSession = (session: ClaudeCodeSession) => {
+    setActiveClaudeSession(session.sessionId);
+    setIsInResumedSession(true);
+    setShowSessionMenu(false);
+
+    // Add a system message indicating resumed session
+    const message: Message = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `Resumed Claude session from ${session.projectName}. ${session.messageCount} messages in history. You can continue your previous conversation.`,
+      timestamp: new Date(),
+      usedClaudeCode: true,
+    };
+    setMessages(prev => [...prev, message]);
+
+    // Persist
+    window.electronAPI?.addClawdbotMessage?.({
+      role: 'assistant',
+      content: message.content,
+      usedClaudeCode: true,
+    });
+  };
+
+  // Start fresh session
+  const handleStartFresh = () => {
+    setActiveClaudeSession(null);
+    setIsInResumedSession(false);
+    setShowSessionMenu(false);
+
+    if (isInResumedSession) {
+      const message: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Started a fresh session. Previous session context is no longer active.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, message]);
+
+      window.electronAPI?.addClawdbotMessage?.({
+        role: 'assistant',
+        content: message.content,
+      });
+    }
+  };
+
   // Get greeting based on time of day
   function getGreeting(): string {
     const hour = new Date().getHours();
@@ -357,10 +422,90 @@ export default function Clawdbot() {
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white">Clawdbot</h2>
-            <p className="text-sm text-slate-400">Voice-enabled AI Assistant</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-slate-400">Voice-enabled AI Assistant</p>
+              {isInResumedSession && (
+                <span className="px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded">
+                  Resumed Session
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Session Resume Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSessionMenu(!showSessionMenu)}
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
+                showSessionMenu || isInResumedSession
+                  ? 'bg-purple-500/20 text-purple-400'
+                  : 'bg-slate-700 text-slate-400 hover:text-white'
+              }`}
+              title="Resume previous session"
+            >
+              <History size={18} />
+              <span className="text-sm hidden sm:inline">Sessions</span>
+              <ChevronDown size={14} className={`transition-transform ${showSessionMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showSessionMenu && (
+              <div className="absolute right-0 top-full mt-1 w-72 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                <div className="p-2 border-b border-slate-700">
+                  <p className="text-xs text-slate-400 uppercase tracking-wider">Recent Claude Sessions</p>
+                </div>
+
+                {recentSessions.length > 0 ? (
+                  <div className="max-h-64 overflow-y-auto">
+                    {recentSessions.map((session) => (
+                      <button
+                        key={session.sessionId}
+                        onClick={() => handleResumeSession(session)}
+                        className="w-full text-left p-3 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-0"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-white font-medium truncate">
+                              {session.projectName}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {session.lastMessagePreview || 'No preview available'}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              {session.messageCount} messages · {new Date(session.lastModifiedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <RotateCcw size={14} className="text-slate-500 flex-shrink-0 mt-1" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-slate-400 text-sm">
+                    No recent sessions found
+                  </div>
+                )}
+
+                <div className="p-2 border-t border-slate-700 flex gap-2">
+                  {isInResumedSession && (
+                    <button
+                      onClick={handleStartFresh}
+                      className="flex-1 px-3 py-1.5 text-xs text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded transition-colors"
+                    >
+                      Start Fresh
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowSessionMenu(false)}
+                    className="flex-1 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <TTSToggle enabled={ttsEnabled} onToggle={setTtsEnabled} />
           <button
             onClick={clearConversation}

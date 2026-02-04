@@ -44,6 +44,73 @@ export interface ClaudeSession {
   sessionId?: string;
 }
 
+// Git clone types
+export interface CloneOptions {
+  repoUrl: string;
+  targetDir?: string;
+  branch?: string;
+  runSetup?: boolean;
+}
+
+export interface SetupCommand {
+  command: string;
+  args: string[];
+  description: string;
+  packageManager: string;
+}
+
+export interface CloneResult {
+  success: boolean;
+  projectPath?: string;
+  projectId?: string;
+  error?: string;
+  detectedSetup?: SetupCommand[];
+}
+
+export interface SetupResult {
+  success: boolean;
+  completedCommands: string[];
+  failedCommands: { command: string; error: string }[];
+}
+
+export interface CloneProgress {
+  stage: 'cloning' | 'detecting' | 'setup' | 'complete' | 'error';
+  message: string;
+  percentage?: number;
+}
+
+export interface AddProjectFromGitResult {
+  success: boolean;
+  project?: Project;
+  cloneResult: CloneResult;
+  error?: string;
+}
+
+export interface RepoInfo {
+  name: string;
+  defaultBranch?: string;
+  size?: string;
+  error?: string;
+}
+
+// Claude Code Session types (from ~/.claude/projects/)
+export interface ClaudeCodeSession {
+  sessionId: string;
+  projectPath: string;
+  projectName: string;
+  sessionFilePath: string;
+  createdAt: string;
+  lastModifiedAt: string;
+  messageCount: number;
+  lastMessagePreview?: string;
+}
+
+// Session options for resuming
+export interface SessionOptions {
+  resumeSessionId?: string;
+  continueSession?: boolean;
+}
+
 export interface ClaudeAgent {
   id: string;
   name: string;
@@ -584,6 +651,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   discoverProjects: (): Promise<Project[]> => ipcRenderer.invoke('projects:discover'),
   browseForProject: (): Promise<string | null> => ipcRenderer.invoke('projects:browse'),
 
+  // Git clone
+  cloneFromGit: (options: CloneOptions): Promise<AddProjectFromGitResult> =>
+    ipcRenderer.invoke('projects:cloneFromGit', options),
+  detectProjectSetup: (projectPath: string): Promise<SetupCommand[]> =>
+    ipcRenderer.invoke('projects:detectSetup', projectPath),
+  runProjectSetup: (projectPath: string, commands: SetupCommand[]): Promise<SetupResult> =>
+    ipcRenderer.invoke('projects:runSetup', projectPath, commands),
+  getProjectsDirectory: (): Promise<string> =>
+    ipcRenderer.invoke('projects:getProjectsDirectory'),
+  setProjectsDirectory: (dir: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('projects:setProjectsDirectory', dir),
+  getRepoInfo: (repoUrl: string): Promise<RepoInfo> =>
+    ipcRenderer.invoke('projects:getRepoInfo', repoUrl),
+  isValidGitUrl: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke('projects:isValidGitUrl', url),
+
   // Claude sessions
   getClaudeSessions: (): Promise<ClaudeSession[]> => ipcRenderer.invoke('claude:sessions'),
 
@@ -665,6 +748,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('conversations:search', query, options),
   getConversationStats: (): Promise<{ totalSessions: number; totalEntries: number; totalTokens: { input: number; output: number }; sessionsByProject: Record<string, number> }> =>
     ipcRenderer.invoke('conversations:stats'),
+
+  // Claude session linking
+  linkClaudeSession: (appSessionId: string, claudeSessionId: string, claudeSessionPath?: string): Promise<ConversationSession | null> =>
+    ipcRenderer.invoke('conversations:linkClaudeSession', appSessionId, claudeSessionId, claudeSessionPath),
+  getResumableSessions: (projectId?: string): Promise<ConversationSession[]> =>
+    ipcRenderer.invoke('conversations:getResumable', projectId),
+  unlinkClaudeSession: (appSessionId: string): Promise<ConversationSession | null> =>
+    ipcRenderer.invoke('conversations:unlinkClaudeSession', appSessionId),
+  findSessionByClaudeId: (claudeSessionId: string): Promise<ConversationSession | null> =>
+    ipcRenderer.invoke('conversations:findByClaudeId', claudeSessionId),
+
+  // Claude Code Sessions (from ~/.claude/projects/)
+  listClaudeCodeSessions: (projectPath?: string): Promise<ClaudeCodeSession[]> =>
+    ipcRenderer.invoke('claudeSessions:list', projectPath),
+  getClaudeCodeSession: (sessionId: string): Promise<ClaudeCodeSession | null> =>
+    ipcRenderer.invoke('claudeSessions:get', sessionId),
+  canResumeClaudeSession: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('claudeSessions:canResume', sessionId),
+  findLatestClaudeSession: (projectPath: string): Promise<string | null> =>
+    ipcRenderer.invoke('claudeSessions:findLatest', projectPath),
+  getRecentClaudeSessions: (limit?: number): Promise<ClaudeCodeSession[]> =>
+    ipcRenderer.invoke('claudeSessions:getRecent', limit),
+
+  // Claude execution with session resume
+  resumeClaudeSession: (message: string, sessionId: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult> =>
+    ipcRenderer.invoke('claude:resume', message, sessionId, systemPrompt, projectPath),
+  continueClaudeSession: (message: string, systemPrompt?: string, projectPath?: string): Promise<ExecuteResult> =>
+    ipcRenderer.invoke('claude:continue', message, systemPrompt, projectPath),
 
   // ntfy notifications
   getNtfyConfig: (): Promise<NtfyConfig> => ipcRenderer.invoke('ntfy:getConfig'),
@@ -870,8 +981,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Clawdbot Intent/Action APIs
   parseIntent: (text: string): Promise<Intent> =>
     ipcRenderer.invoke('clawdbot:parseIntent', text),
-  dispatchAction: (intent: Intent): Promise<ActionResult> =>
-    ipcRenderer.invoke('clawdbot:dispatchAction', intent),
+  dispatchAction: (intent: Intent, claudeSessionId?: string): Promise<ActionResult> =>
+    ipcRenderer.invoke('clawdbot:dispatchAction', intent, claudeSessionId),
   executeConfirmedAction: (confirmationMessage: string): Promise<ActionResult> =>
     ipcRenderer.invoke('clawdbot:executeConfirmedAction', confirmationMessage),
   getAvailableCommands: (): Promise<Array<{ category: string; examples: string[] }>> =>
@@ -1015,6 +1126,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('executor-log', handler);
     return () => ipcRenderer.removeListener('executor-log', handler);
   },
+
+  // Git clone progress events
+  onCloneProgress: (callback: (progress: CloneProgress) => void) => {
+    const handler = (_: unknown, progress: CloneProgress) => callback(progress);
+    ipcRenderer.on('clone:progress', handler);
+    return () => ipcRenderer.removeListener('clone:progress', handler);
+  },
+  onSetupProgress: (callback: (progress: { command: string; status: string; description: string; error?: string }) => void) => {
+    const handler = (_: unknown, progress: { command: string; status: string; description: string; error?: string }) => callback(progress);
+    ipcRenderer.on('setup:progress', handler);
+    return () => ipcRenderer.removeListener('setup:progress', handler);
+  },
 });
 
 // Type declaration for the window object
@@ -1056,6 +1179,17 @@ declare global {
       refreshProjects: () => Promise<Project[]>;
       discoverProjects: () => Promise<Project[]>;
       browseForProject: () => Promise<string | null>;
+      // Git clone
+      cloneFromGit: (options: CloneOptions) => Promise<AddProjectFromGitResult>;
+      detectProjectSetup: (projectPath: string) => Promise<SetupCommand[]>;
+      runProjectSetup: (projectPath: string, commands: SetupCommand[]) => Promise<SetupResult>;
+      getProjectsDirectory: () => Promise<string>;
+      setProjectsDirectory: (dir: string) => Promise<{ success: boolean }>;
+      getRepoInfo: (repoUrl: string) => Promise<RepoInfo>;
+      isValidGitUrl: (url: string) => Promise<boolean>;
+      // Git clone events
+      onCloneProgress: (callback: (progress: CloneProgress) => void) => () => void;
+      onSetupProgress: (callback: (progress: { command: string; status: string; description: string; error?: string }) => void) => () => void;
       // Claude sessions
       getClaudeSessions: () => Promise<ClaudeSession[]>;
       // System status
@@ -1113,6 +1247,20 @@ declare global {
       getRecentConversations: (limit?: number) => Promise<ConversationSession[]>;
       searchConversations: (query: string, options?: { projectId?: string; limit?: number }) => Promise<Array<{ session: ConversationSession; entry: ConversationEntry; match: string }>>;
       getConversationStats: () => Promise<{ totalSessions: number; totalEntries: number; totalTokens: { input: number; output: number }; sessionsByProject: Record<string, number> }>;
+      // Claude session linking
+      linkClaudeSession: (appSessionId: string, claudeSessionId: string, claudeSessionPath?: string) => Promise<ConversationSession | null>;
+      getResumableSessions: (projectId?: string) => Promise<ConversationSession[]>;
+      unlinkClaudeSession: (appSessionId: string) => Promise<ConversationSession | null>;
+      findSessionByClaudeId: (claudeSessionId: string) => Promise<ConversationSession | null>;
+      // Claude Code Sessions
+      listClaudeCodeSessions: (projectPath?: string) => Promise<ClaudeCodeSession[]>;
+      getClaudeCodeSession: (sessionId: string) => Promise<ClaudeCodeSession | null>;
+      canResumeClaudeSession: (sessionId: string) => Promise<boolean>;
+      findLatestClaudeSession: (projectPath: string) => Promise<string | null>;
+      getRecentClaudeSessions: (limit?: number) => Promise<ClaudeCodeSession[]>;
+      // Claude execution with session resume
+      resumeClaudeSession: (message: string, sessionId: string, systemPrompt?: string, projectPath?: string) => Promise<ExecuteResult>;
+      continueClaudeSession: (message: string, systemPrompt?: string, projectPath?: string) => Promise<ExecuteResult>;
       // ntfy notifications
       getNtfyConfig: () => Promise<NtfyConfig>;
       setNtfyConfig: (config: Partial<NtfyConfig>) => Promise<NtfyConfig>;

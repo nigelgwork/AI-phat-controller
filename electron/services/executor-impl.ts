@@ -98,10 +98,21 @@ export interface ModeStatus {
   };
 }
 
+// Session options for resuming Claude sessions
+export interface SessionOptions {
+  resumeSessionId?: string;   // Resume specific session with --resume <id>
+  continueSession?: boolean;  // Continue last session with --continue
+}
+
+// Extended execute result with session info
+export interface ExecuteResultWithSession extends ExecuteResult {
+  sessionId?: string;  // Extracted session ID from output
+}
+
 // Abstract executor interface
 interface IExecutor {
   initialize(): Promise<void>;
-  runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[], executionId?: string): Promise<ExecuteResult>;
+  runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[], executionId?: string, sessionOptions?: SessionOptions): Promise<ExecuteResultWithSession>;
   runGt(args: string[]): Promise<ExecuteResult>;
   runBd(args: string[]): Promise<ExecuteResult>;
 }
@@ -168,7 +179,7 @@ class WindowsExecutor implements IExecutor {
     return inputPath;
   }
 
-  async runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[], executionId?: string): Promise<ExecuteResult> {
+  async runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[], executionId?: string, sessionOptions?: SessionOptions): Promise<ExecuteResultWithSession> {
     const start = Date.now();
 
     if (!this.claudePath) {
@@ -185,6 +196,15 @@ class WindowsExecutor implements IExecutor {
       '--verbose',  // Required for stream-json
       '--dangerously-skip-permissions',  // Required for non-interactive use
     ];
+
+    // Session resume options
+    if (sessionOptions?.resumeSessionId) {
+      args.push('--resume', sessionOptions.resumeSessionId);
+      log.info('[Executor] Resuming session:', sessionOptions.resumeSessionId);
+    } else if (sessionOptions?.continueSession) {
+      args.push('--continue');
+      log.info('[Executor] Continuing last session');
+    }
 
     if (systemPrompt) {
       args.push('--system-prompt', systemPrompt);
@@ -869,7 +889,7 @@ class WslExecutor implements IExecutor {
       .replace(/\\/g, '/');
   }
 
-  async runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[], executionId?: string): Promise<ExecuteResult> {
+  async runClaude(message: string, systemPrompt?: string, projectPath?: string, imagePaths?: string[], executionId?: string, sessionOptions?: SessionOptions): Promise<ExecuteResultWithSession> {
     const start = Date.now();
     const args = [
       '--print',
@@ -877,6 +897,15 @@ class WslExecutor implements IExecutor {
       '--verbose',  // Required for stream-json
       '--dangerously-skip-permissions',  // Required for non-interactive use
     ];
+
+    // Session resume options
+    if (sessionOptions?.resumeSessionId) {
+      args.push('--resume', sessionOptions.resumeSessionId);
+      log.info('[Executor] WSL resuming session:', sessionOptions.resumeSessionId);
+    } else if (sessionOptions?.continueSession) {
+      args.push('--continue');
+      log.info('[Executor] WSL continuing last session');
+    }
 
     if (systemPrompt) {
       args.push('--system-prompt', systemPrompt);

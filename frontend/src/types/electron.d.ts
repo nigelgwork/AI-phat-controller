@@ -50,6 +50,73 @@ export interface ClaudeSession {
   sessionId?: string;
 }
 
+// Git clone types
+export interface CloneOptions {
+  repoUrl: string;
+  targetDir?: string;
+  branch?: string;
+  runSetup?: boolean;
+}
+
+export interface SetupCommand {
+  command: string;
+  args: string[];
+  description: string;
+  packageManager: string;
+}
+
+export interface CloneResult {
+  success: boolean;
+  projectPath?: string;
+  projectId?: string;
+  error?: string;
+  detectedSetup?: SetupCommand[];
+}
+
+export interface SetupResult {
+  success: boolean;
+  completedCommands: string[];
+  failedCommands: { command: string; error: string }[];
+}
+
+export interface CloneProgress {
+  stage: 'cloning' | 'detecting' | 'setup' | 'complete' | 'error';
+  message: string;
+  percentage?: number;
+}
+
+export interface AddProjectFromGitResult {
+  success: boolean;
+  project?: Project;
+  cloneResult: CloneResult;
+  error?: string;
+}
+
+export interface RepoInfo {
+  name: string;
+  defaultBranch?: string;
+  size?: string;
+  error?: string;
+}
+
+// Claude Code Session types (from ~/.claude/projects/)
+export interface ClaudeCodeSession {
+  sessionId: string;
+  projectPath: string;
+  projectName: string;
+  sessionFilePath: string;
+  createdAt: string;
+  lastModifiedAt: string;
+  messageCount: number;
+  lastMessagePreview?: string;
+}
+
+// Session options for resuming
+export interface SessionOptions {
+  resumeSessionId?: string;
+  continueSession?: boolean;
+}
+
 export interface ClaudeAgent {
   id: string;
   name: string;
@@ -144,6 +211,19 @@ interface ElectronAPI {
   discoverProjects: () => Promise<Project[]>;
   browseForProject: () => Promise<string | null>;
 
+  // Git clone
+  cloneFromGit: (options: CloneOptions) => Promise<AddProjectFromGitResult>;
+  detectProjectSetup: (projectPath: string) => Promise<SetupCommand[]>;
+  runProjectSetup: (projectPath: string, commands: SetupCommand[]) => Promise<SetupResult>;
+  getProjectsDirectory: () => Promise<string>;
+  setProjectsDirectory: (dir: string) => Promise<{ success: boolean }>;
+  getRepoInfo: (repoUrl: string) => Promise<RepoInfo>;
+  isValidGitUrl: (url: string) => Promise<boolean>;
+
+  // Git clone events
+  onCloneProgress: (callback: (progress: CloneProgress) => void) => () => void;
+  onSetupProgress: (callback: (progress: { command: string; status: string; description: string; error?: string }) => void) => () => void;
+
   // Claude sessions
   getClaudeSessions: () => Promise<ClaudeSession[]>;
 
@@ -207,6 +287,23 @@ interface ElectronAPI {
   getRecentConversations: (limit?: number) => Promise<ConversationSession[]>;
   searchConversations: (query: string, options?: { projectId?: string; limit?: number }) => Promise<Array<{ session: ConversationSession; entry: ConversationEntry; match: string }>>;
   getConversationStats: () => Promise<{ totalSessions: number; totalEntries: number; totalTokens: { input: number; output: number }; sessionsByProject: Record<string, number> }>;
+
+  // Claude session linking
+  linkClaudeSession: (appSessionId: string, claudeSessionId: string, claudeSessionPath?: string) => Promise<ConversationSession | null>;
+  getResumableSessions: (projectId?: string) => Promise<ConversationSession[]>;
+  unlinkClaudeSession: (appSessionId: string) => Promise<ConversationSession | null>;
+  findSessionByClaudeId: (claudeSessionId: string) => Promise<ConversationSession | null>;
+
+  // Claude Code Sessions (from ~/.claude/projects/)
+  listClaudeCodeSessions: (projectPath?: string) => Promise<ClaudeCodeSession[]>;
+  getClaudeCodeSession: (sessionId: string) => Promise<ClaudeCodeSession | null>;
+  canResumeClaudeSession: (sessionId: string) => Promise<boolean>;
+  findLatestClaudeSession: (projectPath: string) => Promise<string | null>;
+  getRecentClaudeSessions: (limit?: number) => Promise<ClaudeCodeSession[]>;
+
+  // Claude execution with session resume
+  resumeClaudeSession: (message: string, sessionId: string, systemPrompt?: string, projectPath?: string) => Promise<ExecuteResult>;
+  continueClaudeSession: (message: string, systemPrompt?: string, projectPath?: string) => Promise<ExecuteResult>;
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void;
@@ -346,7 +443,7 @@ interface ElectronAPI {
 
   // Clawdbot Intent/Action APIs
   parseIntent?: (text: string) => Promise<Intent>;
-  dispatchAction?: (intent: Intent) => Promise<ActionResult>;
+  dispatchAction?: (intent: Intent, claudeSessionId?: string) => Promise<ActionResult>;
   executeConfirmedAction?: (confirmationMessage: string) => Promise<ActionResult>;
   getAvailableCommands?: () => Promise<Array<{ category: string; examples: string[] }>>;
 

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { settings } from './settings';
 import { createLogger } from '../utils/logger';
+import { cloneRepository, detectSetupCommands, runSetupCommands, CloneOptions, CloneResult, SetupCommand, SetupResult } from './git-clone';
 
 const log = createLogger('Projects');
 const execAsync = promisify(exec);
@@ -773,4 +774,63 @@ export async function getSystemStatus(): Promise<{
     sessions,
     discovered: newDiscovered,
   };
+}
+
+// Re-export git clone types and functions for convenience
+export { CloneOptions, CloneResult, SetupCommand, SetupResult } from './git-clone';
+export { isValidGitUrl, getRepoInfo, getProjectsDirectory } from './git-clone';
+
+/**
+ * Clone a git repository and add it as a project
+ */
+export async function addProjectFromGit(options: CloneOptions): Promise<{
+  success: boolean;
+  project?: Project;
+  cloneResult: CloneResult;
+  error?: string;
+}> {
+  // Clone the repository
+  const cloneResult = await cloneRepository(options);
+
+  if (!cloneResult.success || !cloneResult.projectPath) {
+    return {
+      success: false,
+      cloneResult,
+      error: cloneResult.error || 'Clone failed',
+    };
+  }
+
+  // Add the cloned project to our projects list
+  try {
+    const project = await addProject(cloneResult.projectPath);
+
+    return {
+      success: true,
+      project,
+      cloneResult,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      cloneResult,
+      error: err instanceof Error ? err.message : 'Failed to add project',
+    };
+  }
+}
+
+/**
+ * Detect setup commands for a project path
+ */
+export async function detectProjectSetup(projectPath: string): Promise<SetupCommand[]> {
+  return detectSetupCommands(projectPath);
+}
+
+/**
+ * Run setup commands for a project
+ */
+export async function runProjectSetup(
+  projectPath: string,
+  commands: SetupCommand[]
+): Promise<SetupResult> {
+  return runSetupCommands(projectPath, commands);
 }

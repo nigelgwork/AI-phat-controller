@@ -25,6 +25,10 @@ export interface ConversationSession {
   entryCount: number;
   totalTokens: { input: number; output: number };
   summary?: string;
+  // Claude Code session linking
+  claudeCodeSessionId?: string;    // Claude's session ID for resuming
+  claudeCodeSessionPath?: string;  // Path to Claude's session file
+  isResumable: boolean;            // Whether this session can be resumed
 }
 
 interface SessionsIndex {
@@ -95,6 +99,7 @@ export function createConversationSession(
     lastActivityAt: new Date().toISOString(),
     entryCount: 0,
     totalTokens: { input: 0, output: 0 },
+    isResumable: false,
   };
 
   // Add to index
@@ -528,4 +533,76 @@ export function buildPromptWithContext(
   parts.push(currentPrompt);
 
   return parts.join('\n');
+}
+
+// ============================================
+// Claude Code Session Linking
+// ============================================
+
+/**
+ * Link a Claude Code session ID to an app conversation session.
+ * This enables resuming the Claude Code session later.
+ *
+ * @param appSessionId - Our app's conversation session ID
+ * @param claudeSessionId - Claude Code's session ID
+ * @param claudeSessionPath - Optional path to Claude's session file
+ */
+export function linkClaudeCodeSession(
+  appSessionId: string,
+  claudeSessionId: string,
+  claudeSessionPath?: string
+): ConversationSession | null {
+  const index = loadSessionsIndex();
+  const session = index.sessions.find(s => s.id === appSessionId);
+
+  if (!session) {
+    log.error(`Session not found: ${appSessionId}`);
+    return null;
+  }
+
+  session.claudeCodeSessionId = claudeSessionId;
+  if (claudeSessionPath) {
+    session.claudeCodeSessionPath = claudeSessionPath;
+  }
+  session.isResumable = true;
+
+  saveSessionsIndex(index);
+  log.info(`Linked Claude session ${claudeSessionId} to app session ${appSessionId}`);
+
+  return session;
+}
+
+/**
+ * Get sessions that can be resumed (have a linked Claude Code session)
+ */
+export function getResumableSessions(projectId?: string): ConversationSession[] {
+  const sessions = listConversationSessions(projectId);
+  return sessions.filter(s => s.isResumable && s.claudeCodeSessionId);
+}
+
+/**
+ * Unlink a Claude Code session from an app session
+ */
+export function unlinkClaudeCodeSession(appSessionId: string): ConversationSession | null {
+  const index = loadSessionsIndex();
+  const session = index.sessions.find(s => s.id === appSessionId);
+
+  if (!session) {
+    return null;
+  }
+
+  delete session.claudeCodeSessionId;
+  delete session.claudeCodeSessionPath;
+  session.isResumable = false;
+
+  saveSessionsIndex(index);
+  return session;
+}
+
+/**
+ * Find app session by Claude Code session ID
+ */
+export function findSessionByClaudeId(claudeSessionId: string): ConversationSession | null {
+  const index = loadSessionsIndex();
+  return index.sessions.find(s => s.claudeCodeSessionId === claudeSessionId) || null;
 }

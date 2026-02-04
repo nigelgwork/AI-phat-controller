@@ -16,11 +16,17 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
+  GitMerge,
+  X,
+  AlertCircle,
+  CheckCircle2,
+  Package,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import CollapsibleHelp from '../components/CollapsibleHelp';
 import type { ProjectBrief, DeepDivePlan } from '../types/gastown';
+import type { CloneOptions, SetupCommand, CloneProgress, AddProjectFromGitResult } from '../types/electron';
 
 interface Project {
   id: string;
@@ -36,6 +42,7 @@ interface Project {
 export default function Projects() {
   const queryClient = useQueryClient();
   const [showDiscover, setShowDiscover] = useState(false);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
 
   const { data: projects, isLoading, refetch } = useQuery({
     queryKey: ['projects'],
@@ -100,6 +107,13 @@ export default function Projects() {
           >
             <Plus size={16} />
             Add Project
+          </button>
+          <button
+            onClick={() => setShowCloneDialog(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm font-medium transition-colors"
+          >
+            <GitMerge size={16} />
+            Clone from Git
           </button>
           <Link
             to="/projects/new"
@@ -198,6 +212,17 @@ export default function Projects() {
           </div>
         </div>
       </CollapsibleHelp>
+
+      {/* Clone from Git Dialog */}
+      {showCloneDialog && (
+        <CloneFromGitDialog
+          onClose={() => setShowCloneDialog(false)}
+          onSuccess={() => {
+            setShowCloneDialog(false);
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -717,6 +742,340 @@ function DiscoveredRow({
             </>
           )}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Clone from Git Dialog Component
+function CloneFromGitDialog({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [repoUrl, setRepoUrl] = useState('');
+  const [branch, setBranch] = useState('');
+  const [targetDir, setTargetDir] = useState('');
+  const [projectsDir, setProjectsDir] = useState('');
+  const [isValidUrl, setIsValidUrl] = useState(false);
+  const [detectedSetup, setDetectedSetup] = useState<SetupCommand[]>([]);
+  const [selectedSetup, setSelectedSetup] = useState<Set<number>>(new Set());
+  const [progress, setProgress] = useState<CloneProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneResult, setCloneResult] = useState<AddProjectFromGitResult | null>(null);
+
+  // Load projects directory on mount
+  useEffect(() => {
+    window.electronAPI?.getProjectsDirectory().then((dir) => {
+      setProjectsDir(dir);
+    });
+  }, []);
+
+  // Set up progress listener
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onCloneProgress((p) => {
+      setProgress(p);
+      if (p.stage === 'error') {
+        setError(p.message);
+        setIsCloning(false);
+      }
+    });
+    return () => unsubscribe?.();
+  }, []);
+
+  // Validate URL when it changes
+  useEffect(() => {
+    if (!repoUrl.trim()) {
+      setIsValidUrl(false);
+      return;
+    }
+
+    window.electronAPI?.isValidGitUrl(repoUrl).then((valid) => {
+      setIsValidUrl(valid);
+    });
+
+    // Extract repo name for target dir preview
+    const match = repoUrl.match(/\/([^/]+?)(\.git)?$/);
+    if (match && projectsDir) {
+      setTargetDir(`${projectsDir}/${match[1]}`);
+    }
+  }, [repoUrl, projectsDir]);
+
+  // Clone mutation
+  const cloneMutation = useMutation({
+    mutationFn: async (options: CloneOptions) => {
+      setIsCloning(true);
+      setError(null);
+      setProgress({ stage: 'cloning', message: 'Starting clone...', percentage: 0 });
+      return window.electronAPI?.cloneFromGit(options);
+    },
+    onSuccess: (result) => {
+      setIsCloning(false);
+      if (result?.success) {
+        setCloneResult(result);
+        // Detect setup commands
+        if (result.cloneResult?.detectedSetup) {
+          setDetectedSetup(result.cloneResult.detectedSetup);
+          // Select all by default
+          setSelectedSetup(new Set(result.cloneResult.detectedSetup.map((_, i) => i)));
+        }
+      } else {
+        setError(result?.error || 'Clone failed');
+      }
+    },
+    onError: (err) => {
+      setIsCloning(false);
+      setError(err instanceof Error ? err.message : 'Clone failed');
+    },
+  });
+
+  // Run setup mutation
+  const setupMutation = useMutation({
+    mutationFn: async () => {
+      if (!cloneResult?.cloneResult?.projectPath) return;
+      const commandsToRun = detectedSetup.filter((_, i) => selectedSetup.has(i));
+      return window.electronAPI?.runProjectSetup(
+        cloneResult.cloneResult.projectPath,
+        commandsToRun
+      );
+    },
+    onSuccess: () => {
+      onSuccess();
+    },
+  });
+
+  const handleClone = () => {
+    if (!isValidUrl || isCloning) return;
+
+    cloneMutation.mutate({
+      repoUrl: repoUrl.trim(),
+      branch: branch.trim() || undefined,
+      targetDir: targetDir.trim() || undefined,
+      runSetup: false, // We'll run setup separately
+    });
+  };
+
+  const handleRunSetup = () => {
+    if (selectedSetup.size === 0) {
+      onSuccess();
+      return;
+    }
+    setupMutation.mutate();
+  };
+
+  const toggleSetupCommand = (index: number) => {
+    const newSelected = new Set(selectedSetup);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedSetup(newSelected);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-slate-800 rounded-lg border border-slate-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-700">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <GitMerge size={20} className="text-emerald-400" />
+            Clone from Git
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 text-slate-400 hover:text-white rounded transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-4 space-y-4">
+          {/* Clone Result / Setup Phase */}
+          {cloneResult?.success ? (
+            <div className="space-y-4">
+              {/* Success message */}
+              <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2">
+                <CheckCircle2 size={18} className="text-green-400" />
+                <span className="text-sm text-green-300">
+                  Successfully cloned to {cloneResult.cloneResult?.projectPath}
+                </span>
+              </div>
+
+              {/* Setup commands */}
+              {detectedSetup.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-300 font-medium">Detected Setup Commands</p>
+                  <p className="text-xs text-slate-400">
+                    Select commands to run to set up the project
+                  </p>
+                  <div className="space-y-2">
+                    {detectedSetup.map((cmd, i) => (
+                      <label
+                        key={i}
+                        className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg cursor-pointer hover:bg-slate-900/80 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSetup.has(i)}
+                          onChange={() => toggleSetupCommand(i)}
+                          className="w-4 h-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-800"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white font-mono">
+                            {cmd.command} {cmd.args.join(' ')}
+                          </p>
+                          <p className="text-xs text-slate-400">{cmd.description}</p>
+                        </div>
+                        <Package size={14} className="text-slate-500" />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={onSuccess}
+                  className="px-4 py-2 text-sm text-slate-300 hover:text-white transition-colors"
+                >
+                  Skip Setup
+                </button>
+                <button
+                  onClick={handleRunSetup}
+                  disabled={setupMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {setupMutation.isPending ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Running...
+                    </>
+                  ) : selectedSetup.size > 0 ? (
+                    <>
+                      <Package size={14} />
+                      Run {selectedSetup.size} Command{selectedSetup.size > 1 ? 's' : ''}
+                    </>
+                  ) : (
+                    <>
+                      <Check size={14} />
+                      Done
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Git URL Input */}
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">Repository URL</label>
+                <input
+                  type="text"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder="https://github.com/user/repo.git"
+                  className={`w-full px-3 py-2 bg-slate-900 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-colors ${
+                    repoUrl && !isValidUrl
+                      ? 'border-red-500 focus:ring-red-500/50'
+                      : 'border-slate-700 focus:ring-emerald-500/50'
+                  }`}
+                  disabled={isCloning}
+                />
+                {repoUrl && !isValidUrl && (
+                  <p className="text-xs text-red-400 mt-1">Please enter a valid git URL</p>
+                )}
+              </div>
+
+              {/* Branch Input (optional) */}
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">
+                  Branch <span className="text-slate-500">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  placeholder="main"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors"
+                  disabled={isCloning}
+                />
+              </div>
+
+              {/* Target Directory Preview */}
+              <div>
+                <label className="block text-sm text-slate-300 mb-1.5">Target Directory</label>
+                <input
+                  type="text"
+                  value={targetDir}
+                  onChange={(e) => setTargetDir(e.target.value)}
+                  placeholder={projectsDir || 'Loading...'}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors"
+                  disabled={isCloning}
+                />
+              </div>
+
+              {/* Progress */}
+              {progress && isCloning && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-300">{progress.message}</span>
+                    {progress.percentage !== undefined && (
+                      <span className="text-emerald-400">{Math.round(progress.percentage)}%</span>
+                    )}
+                  </div>
+                  <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-300"
+                      style={{ width: `${progress.percentage || 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+                  <AlertCircle size={18} className="text-red-400 flex-shrink-0" />
+                  <span className="text-sm text-red-300">{error}</span>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-sm text-slate-300 hover:text-white transition-colors"
+                  disabled={isCloning}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClone}
+                  disabled={!isValidUrl || isCloning}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:text-slate-400 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {isCloning ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Cloning...
+                    </>
+                  ) : (
+                    <>
+                      <GitMerge size={14} />
+                      Clone Repository
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

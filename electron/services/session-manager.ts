@@ -23,6 +23,8 @@ export interface ExecutionSession {
   costUsd?: number;
   error?: string;
   result?: string;
+  claudeCodeSessionId?: string;   // Claude CLI session ID for resuming
+  claudeCodeSessionPath?: string; // Path to Claude CLI session file
 }
 
 export interface SessionLogEntry {
@@ -198,6 +200,8 @@ function notifySessionUpdate(session: ExecutionSession): void {
       costUsd: session.costUsd,
       error: session.error,
       logCount: session.logs.length,
+      claudeCodeSessionId: session.claudeCodeSessionId,
+      claudeCodeSessionPath: session.claudeCodeSessionPath,
     },
   });
 }
@@ -219,4 +223,50 @@ export function getSessionLogs(id: string, limit = 50): SessionLogEntry[] {
   const session = activeSessions.get(id) || sessionHistory.find(s => s.id === id);
   if (!session) return [];
   return session.logs.slice(-limit);
+}
+
+/**
+ * Link a Claude Code CLI session ID to an execution session
+ * This allows resuming the Claude conversation later
+ */
+export function linkClaudeCodeSession(
+  executionId: string,
+  claudeSessionId: string,
+  claudeSessionPath?: string
+): void {
+  const session = activeSessions.get(executionId) || sessionHistory.find(s => s.id === executionId);
+  if (!session) {
+    log.warn(`[SessionManager] Cannot link Claude session: execution ${executionId} not found`);
+    return;
+  }
+
+  session.claudeCodeSessionId = claudeSessionId;
+  if (claudeSessionPath) {
+    session.claudeCodeSessionPath = claudeSessionPath;
+  }
+
+  notifySessionUpdate(session);
+  log.info(`[SessionManager] Linked Claude session ${claudeSessionId} to execution ${executionId}`);
+}
+
+/**
+ * Get sessions that can be resumed (have a Claude session ID)
+ */
+export function getResumableSessions(limit = 10): ExecutionSession[] {
+  const resumable = sessionHistory.filter(s => s.claudeCodeSessionId);
+  return resumable.slice(0, limit);
+}
+
+/**
+ * Find a session by its Claude Code session ID
+ */
+export function findSessionByClaudeId(claudeSessionId: string): ExecutionSession | undefined {
+  // Check active sessions first
+  for (const session of activeSessions.values()) {
+    if (session.claudeCodeSessionId === claudeSessionId) {
+      return session;
+    }
+  }
+  // Check history
+  return sessionHistory.find(s => s.claudeCodeSessionId === claudeSessionId);
 }

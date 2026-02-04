@@ -24,7 +24,17 @@ import {
   discoverGitRepos,
   detectClaudeSessions,
   getSystemStatus,
+  addProjectFromGit,
+  detectProjectSetup,
+  runProjectSetup,
+  CloneOptions,
+  SetupCommand,
 } from '../services/projects';
+import {
+  getProjectsDirectory,
+  isValidGitUrl,
+  getRepoInfo,
+} from '../services/git-clone';
 import {
   listAgents,
   getAgent,
@@ -119,7 +129,19 @@ import {
   getRecentConversations,
   searchConversations,
   getConversationStats,
+  linkClaudeCodeSession,
+  getResumableSessions,
+  unlinkClaudeCodeSession,
+  findSessionByClaudeId,
 } from '../services/conversations';
+import {
+  listClaudeCodeSessions,
+  getClaudeCodeSession,
+  canResumeSession,
+  findLatestSession,
+  getRecentSessions as getRecentClaudeSessions,
+} from '../services/claude-sessions';
+import type { SessionOptions } from '../services/executor';
 import {
   captureScreen,
   captureActiveWindow,
@@ -375,6 +397,62 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
       return result.filePaths[0];
     }
     return null;
+  });
+
+  // Git clone handlers
+  ipcMain.handle('projects:cloneFromGit', async (_, options: CloneOptions) => {
+    if (!options?.repoUrl || !isValidGitUrl(options.repoUrl)) {
+      return { success: false, error: 'Invalid git URL' };
+    }
+    logActivity('project', 'Cloning project from git', {
+      repoUrl: options.repoUrl,
+      branch: options.branch,
+    });
+    return addProjectFromGit(options);
+  });
+
+  ipcMain.handle('projects:detectSetup', async (_, projectPath: string) => {
+    if (!projectPath || typeof projectPath !== 'string') {
+      throw new Error('Invalid project path');
+    }
+    return detectProjectSetup(projectPath);
+  });
+
+  ipcMain.handle('projects:runSetup', async (_, projectPath: string, commands: SetupCommand[]) => {
+    if (!projectPath || typeof projectPath !== 'string') {
+      throw new Error('Invalid project path');
+    }
+    if (!Array.isArray(commands)) {
+      throw new Error('Commands must be an array');
+    }
+    logActivity('project', 'Running setup commands', {
+      projectPath,
+      commandCount: commands.length,
+    });
+    return runProjectSetup(projectPath, commands);
+  });
+
+  ipcMain.handle('projects:getProjectsDirectory', () => {
+    return getProjectsDirectory();
+  });
+
+  ipcMain.handle('projects:setProjectsDirectory', (_, dir: string) => {
+    if (!dir || typeof dir !== 'string') {
+      throw new Error('Invalid directory path');
+    }
+    setSetting('projectsDirectory', dir);
+    return { success: true };
+  });
+
+  ipcMain.handle('projects:getRepoInfo', async (_, repoUrl: string) => {
+    if (!repoUrl || typeof repoUrl !== 'string') {
+      throw new Error('Invalid repository URL');
+    }
+    return getRepoInfo(repoUrl);
+  });
+
+  ipcMain.handle('projects:isValidGitUrl', (_, url: string) => {
+    return isValidGitUrl(url);
   });
 
   // Claude session detection
@@ -688,6 +766,55 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('conversations:stats', () => {
     return getConversationStats();
+  });
+
+  // Claude Code session linking
+  ipcMain.handle('conversations:linkClaudeSession', (_, appSessionId: string, claudeSessionId: string, claudeSessionPath?: string) => {
+    return linkClaudeCodeSession(appSessionId, claudeSessionId, claudeSessionPath);
+  });
+
+  ipcMain.handle('conversations:getResumable', (_, projectId?: string) => {
+    return getResumableSessions(projectId);
+  });
+
+  ipcMain.handle('conversations:unlinkClaudeSession', (_, appSessionId: string) => {
+    return unlinkClaudeCodeSession(appSessionId);
+  });
+
+  ipcMain.handle('conversations:findByClaudeId', (_, claudeSessionId: string) => {
+    return findSessionByClaudeId(claudeSessionId);
+  });
+
+  // Claude Code Sessions (from ~/.claude/projects/)
+  ipcMain.handle('claudeSessions:list', async (_, projectPath?: string) => {
+    return listClaudeCodeSessions(projectPath);
+  });
+
+  ipcMain.handle('claudeSessions:get', async (_, sessionId: string) => {
+    return getClaudeCodeSession(sessionId);
+  });
+
+  ipcMain.handle('claudeSessions:canResume', async (_, sessionId: string) => {
+    return canResumeSession(sessionId);
+  });
+
+  ipcMain.handle('claudeSessions:findLatest', async (_, projectPath: string) => {
+    return findLatestSession(projectPath);
+  });
+
+  ipcMain.handle('claudeSessions:getRecent', async (_, limit?: number) => {
+    return getRecentClaudeSessions(limit);
+  });
+
+  // Claude execution with session resume
+  ipcMain.handle('claude:resume', async (_, message: string, sessionId: string, systemPrompt?: string, projectPath?: string) => {
+    const executor = await getExecutor();
+    return executor.runClaude(message, systemPrompt || getSystemPrompt(), projectPath, undefined, undefined, { resumeSessionId: sessionId });
+  });
+
+  ipcMain.handle('claude:continue', async (_, message: string, systemPrompt?: string, projectPath?: string) => {
+    const executor = await getExecutor();
+    return executor.runClaude(message, systemPrompt || getSystemPrompt(), projectPath, undefined, undefined, { continueSession: true });
   });
 
   // ntfy notification handlers
@@ -1155,8 +1282,8 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return parseIntent(text);
   });
 
-  ipcMain.handle('clawdbot:dispatchAction', async (_, intent: Intent) => {
-    return dispatchAction(intent);
+  ipcMain.handle('clawdbot:dispatchAction', async (_, intent: Intent, claudeSessionId?: string) => {
+    return dispatchAction(intent, claudeSessionId ? { claudeSessionId } : undefined);
   });
 
   ipcMain.handle('clawdbot:executeConfirmedAction', async (_, confirmationMessage: string) => {

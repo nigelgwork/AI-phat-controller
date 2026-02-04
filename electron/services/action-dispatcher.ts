@@ -25,10 +25,14 @@ export interface ActionResult {
   confirmationMessage?: string;
 }
 
+export interface DispatchOptions {
+  claudeSessionId?: string; // Resume a specific Claude Code session
+}
+
 /**
  * Dispatch an intent to the appropriate handler
  */
-export async function dispatchAction(intent: Intent): Promise<ActionResult> {
+export async function dispatchAction(intent: Intent, options?: DispatchOptions): Promise<ActionResult> {
   switch (intent.type) {
     case 'navigation':
       return handleNavigation(intent);
@@ -43,17 +47,20 @@ export async function dispatchAction(intent: Intent): Promise<ActionResult> {
     case 'unknown':
     default:
       // Try to handle with Claude Code
-      return handleUnknownWithClaude(intent);
+      return handleUnknownWithClaude(intent, options?.claudeSessionId);
   }
 }
 
 /**
  * Handle unknown intents by calling Claude Code
  */
-async function handleUnknownWithClaude(intent: Intent): Promise<ActionResult> {
+async function handleUnknownWithClaude(intent: Intent, claudeSessionId?: string): Promise<ActionResult> {
   const userMessage = intent.originalText;
 
   log.info('[Clawdbot] Routing unknown intent to Claude Code:', userMessage.substring(0, 50));
+  if (claudeSessionId) {
+    log.info('[Clawdbot] Resuming Claude session:', claudeSessionId);
+  }
 
   try {
     const executor = await getExecutor();
@@ -94,7 +101,10 @@ Keep responses concise but helpful. If you need to suggest an action, clearly st
 
     const prompt = conversationContext + `User: ${userMessage}`;
 
-    const result = await executor.runClaude(prompt, systemPrompt, undefined, undefined, `clawdbot-${Date.now()}`);
+    // Build session options if resuming a Claude session
+    const sessionOptions = claudeSessionId ? { resumeSessionId: claudeSessionId } : undefined;
+
+    const result = await executor.runClaude(prompt, systemPrompt, undefined, undefined, `clawdbot-${Date.now()}`, sessionOptions);
 
     if (result.success && result.response) {
       // Parse out the final result from potential JSON stream output

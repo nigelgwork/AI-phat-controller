@@ -26,6 +26,9 @@ export interface AppSettings {
     height: number;
     isMaximized: boolean;
   };
+  // Git clone settings
+  projectsDirectory: string;     // Default directory for cloned projects
+  autoRunSetup: boolean;         // Auto-run detected setup commands
 }
 
 const defaults: AppSettings = {
@@ -42,6 +45,8 @@ const defaults: AppSettings = {
   autoCheckUpdates: true,
   updateChannel: 'stable',
   hasCompletedSetup: false,
+  projectsDirectory: '',        // Empty means use ~/projects default
+  autoRunSetup: false,          // Show confirmation by default
 };
 
 // Create store instance (will be initialized in main process)
