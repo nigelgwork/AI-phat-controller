@@ -10,6 +10,8 @@ import {
   Crown,
   Terminal,
   Sparkles,
+  Activity,
+  MessageCircle,
 } from 'lucide-react';
 import ModeToggle from './ModeToggle';
 import UpdateBanner from './UpdateBanner';
@@ -23,7 +25,9 @@ const navItems = [
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/tmux', icon: Terminal, label: 'tmux Sessions' },
-  { to: '/clawdbot', icon: Sparkles, label: 'Clawdbot' },
+  { to: '/chat', icon: MessageCircle, label: 'Clawdbot Chat' },
+  { to: '/clawdbot', icon: Sparkles, label: 'Clawdbot Settings' },
+  { to: '/activity', icon: Activity, label: 'Activity Log' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

@@ -330,6 +330,25 @@ interface ElectronAPI {
   savePersonality: (personality: Omit<ClawdbotPersonality, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<ClawdbotPersonality>;
   deletePersonality: (id: string) => Promise<boolean>;
   getClawdbotGreeting: () => Promise<string>;
+
+  // Token History
+  getTokenHistory?: (days?: number) => Promise<DailyTokenUsage[]>;
+  getTokenHistoryTotal?: (days?: number) => Promise<{ input: number; output: number }>;
+  getTokenHistoryAverage?: (days?: number) => Promise<{ input: number; output: number }>;
+  clearTokenHistory?: () => Promise<{ success: boolean }>;
+
+  // Activity Log
+  getActivityLogs?: (options?: ActivityLogQueryOptions) => Promise<ActivityLogEntry[]>;
+  searchActivityLogs?: (query: string, filters?: ActivityLogQueryOptions) => Promise<ActivityLogEntry[]>;
+  exportActivityLogs?: (format: 'json' | 'csv', dateRange?: { start?: string; end?: string }) => Promise<string>;
+  getActivitySummary?: (dateRange?: { start?: string; end?: string }) => Promise<ActivitySummary>;
+  clearActivityLogs?: () => Promise<{ success: boolean }>;
+
+  // Clawdbot Intent/Action APIs
+  parseIntent?: (text: string) => Promise<Intent>;
+  dispatchAction?: (intent: Intent) => Promise<ActionResult>;
+  executeConfirmedAction?: (confirmationMessage: string) => Promise<ActionResult>;
+  getAvailableCommands?: () => Promise<Array<{ category: string; examples: string[] }>>;
 }
 
 declare global {
@@ -359,6 +378,77 @@ export interface TmuxStatus {
   available: boolean;
   platform: 'linux' | 'wsl' | 'windows-no-wsl' | 'macos';
   message: string;
+}
+
+// Token history types
+export interface HourlyUsage {
+  hour: number;
+  input: number;
+  output: number;
+}
+
+export interface DailyTokenUsage {
+  date: string;
+  hourlyUsage: HourlyUsage[];
+  dailyTotal: {
+    input: number;
+    output: number;
+  };
+}
+
+// Activity Log types
+export type ActivityCategory = 'execution' | 'user_action' | 'system' | 'error';
+
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  category: ActivityCategory;
+  action: string;
+  details: Record<string, unknown>;
+  taskId?: string;
+  projectId?: string;
+  tokens?: { input: number; output: number };
+  costUsd?: number;
+  duration?: number;
+}
+
+export interface ActivitySummary {
+  totalEntries: number;
+  totalCostUsd: number;
+  totalTokens: { input: number; output: number };
+  byCategory: Record<ActivityCategory, number>;
+  averageDuration: number;
+}
+
+export interface ActivityLogQueryOptions {
+  category?: ActivityCategory;
+  taskId?: string;
+  projectId?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  offset?: number;
+}
+
+// Clawdbot Intent/Action types
+export type IntentType = 'navigation' | 'task_management' | 'execution' | 'query' | 'settings' | 'unknown';
+
+export interface Intent {
+  type: IntentType;
+  action: string;
+  parameters: Record<string, unknown>;
+  confidence: number;
+  originalText: string;
+}
+
+export interface ActionResult {
+  success: boolean;
+  action: string;
+  response: string;
+  data?: Record<string, unknown>;
+  navigate?: string;
+  requiresConfirmation?: boolean;
+  confirmationMessage?: string;
 }
 
 // Clawdbot personality types

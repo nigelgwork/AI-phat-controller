@@ -63,8 +63,32 @@ export default function Tasks() {
     },
   });
 
+  const [sendingTaskId, setSendingTaskId] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+
   const sendToClaudeMutation = useMutation({
-    mutationFn: (id: string) => window.electronAPI!.sendTaskToClaude(id),
+    mutationFn: (id: string) => {
+      setSendingTaskId(id);
+      setSendError(null);
+      return window.electronAPI!.sendTaskToClaude(id);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks-stats'] });
+      setSendingTaskId(null);
+      if (!result.success && result.error) {
+        setSendError(result.error);
+        // Auto-clear error after 5 seconds
+        setTimeout(() => setSendError(null), 5000);
+      }
+    },
+    onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks-stats'] });
+      setSendingTaskId(null);
+      setSendError(error instanceof Error ? error.message : 'Unknown error');
+      setTimeout(() => setSendError(null), 5000);
+    },
   });
 
   const filteredTasks = tasks?.filter((task) => {
@@ -152,6 +176,22 @@ export default function Tasks() {
         </div>
       </div>
 
+      {/* Error Banner */}
+      {sendError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            <span className="text-red-400">{sendError}</span>
+          </div>
+          <button
+            onClick={() => setSendError(null)}
+            className="text-red-400 hover:text-red-300"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="text-slate-400">Loading tasks...</div>
       ) : !filteredTasks?.length ? (
@@ -189,12 +229,21 @@ export default function Tasks() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => sendToClaudeMutation.mutate(task.id)}
-                    disabled={sendToClaudeMutation.isPending}
+                    disabled={sendToClaudeMutation.isPending || task.status === 'in_progress'}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700 text-white text-sm rounded transition-colors"
                     title="Send to Claude Code"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    Send to Claude
+                    {sendingTaskId === task.id || task.status === 'in_progress' ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 animate-spin" />
+                        {task.status === 'in_progress' ? 'Running...' : 'Sending...'}
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        Send to Claude
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => setEditingTask(task)}
