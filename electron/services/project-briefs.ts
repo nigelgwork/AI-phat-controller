@@ -5,6 +5,7 @@ import Store from 'electron-store';
 import { getExecutor } from './executor';
 import { createTask, type TaskPriority } from './tasks';
 import { createLogger } from '../utils/logger';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 const log = createLogger('ProjectBriefs');
 
@@ -87,6 +88,7 @@ export function initBriefsStore(): void {
   store = new Store<BriefsStore>({
     name: 'project-briefs',
     defaults,
+    encryptionKey: getEncryptionKey(),
   });
 }
 

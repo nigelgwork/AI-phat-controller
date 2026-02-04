@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle, Bell, Send, Gauge, AlertTriangle } from 'lucide-react';
+import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle, Bell, Send, Gauge, AlertTriangle, FileText } from 'lucide-react';
 import type { NtfyConfig, UsageLimitConfig } from '../types/gastown';
 import MCPServerConfigPanel from '../components/MCPServerConfig';
 
@@ -19,12 +19,14 @@ export default function Settings() {
 
   const [defaultMode, setDefaultMode] = useState<'windows' | 'wsl' | 'auto'>('auto');
   const [gastownPath, setGastownPath] = useState('');
+  const [logFilePath, setLogFilePath] = useState('');
   const [wslDistro, setWslDistro] = useState('');
 
   useEffect(() => {
     if (settings) {
       setDefaultMode(settings.defaultMode);
       setGastownPath(settings.gastownPath);
+      setLogFilePath(settings.logFilePath || '');
       setWslDistro(settings.wsl?.distro || '');
     }
   }, [settings]);
@@ -44,6 +46,7 @@ export default function Settings() {
     saveMutation.mutate({
       defaultMode,
       gastownPath,
+      logFilePath,
       'wsl.distro': wslDistro,
     });
   };
@@ -184,6 +187,28 @@ export default function Settings() {
               className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500"
             />
             <p className="text-xs text-slate-500 mt-2">Leave empty to use default WSL distro</p>
+          </div>
+        </div>
+
+        {/* Log File Path Card */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-emerald-500/20 rounded-lg">
+              <FileText size={18} className="text-emerald-400" />
+            </div>
+            <h3 className="font-semibold text-white">Log File Location</h3>
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Log Directory</label>
+            <input
+              type="text"
+              value={logFilePath}
+              onChange={(e) => setLogFilePath(e.target.value)}
+              placeholder="Leave empty to use default app data directory"
+              className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            />
+            <p className="text-xs text-slate-500 mt-2">Custom path for application logs (requires restart)</p>
           </div>
         </div>
 

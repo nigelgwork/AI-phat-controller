@@ -1,4 +1,5 @@
 import Store from 'electron-store';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 export interface AppSettings {
   executionMode: 'windows' | 'wsl';
@@ -10,6 +11,7 @@ export interface AppSettings {
     distro?: string;
   };
   gastownPath: string;
+  logFilePath: string;
   theme: 'dark' | 'light' | 'system';
   startMinimized: boolean;
   minimizeToTray: boolean;
@@ -32,6 +34,7 @@ const defaults: AppSettings = {
   windows: {},
   wsl: {},
   gastownPath: '',
+  logFilePath: '',
   theme: 'dark',
   startMinimized: false,
   minimizeToTray: true,
@@ -48,6 +51,7 @@ export function initSettings(): void {
   settings = new Store<AppSettings>({
     name: 'settings',
     defaults,
+    encryptionKey: getEncryptionKey(),
     // Migrations for future version upgrades
     migrations: {
       '0.2.0': (store) => {

@@ -1,4 +1,5 @@
 import Store from 'electron-store';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 // Generate a simple unique ID
 function generateId(): string {
@@ -34,6 +35,7 @@ export function initTasksStore(): void {
   store = new Store<TasksStore>({
     name: 'tasks',
     defaults,
+    encryptionKey: getEncryptionKey(),
   });
 }
 

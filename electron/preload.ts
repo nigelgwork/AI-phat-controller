@@ -146,6 +146,7 @@ export interface AppSettings {
   windows: { claudePath?: string };
   wsl: { distro?: string };
   gastownPath: string;
+  logFilePath: string;
   theme: 'dark' | 'light' | 'system';
   startMinimized: boolean;
   minimizeToTray: boolean;

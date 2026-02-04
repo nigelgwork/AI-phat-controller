@@ -1,9 +1,62 @@
 import { useQuery } from '@tanstack/react-query';
-import { Boxes, Package, ArrowRight, GitPullRequest, CheckCircle, Clock } from 'lucide-react';
+import { Boxes, Package, ArrowRight, GitPullRequest, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import CollapsibleHelp from '../components/CollapsibleHelp';
+import ConvoyProgress, { ConvoyList, type Convoy } from '../components/ConvoyProgress';
+
+interface ConvoyApiResponse {
+  convoys?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    beads?: Array<{
+      id: string;
+      title: string;
+      status?: string;
+    }>;
+    created_at?: string;
+    updated_at?: string;
+  }>;
+}
+
+function parseConvoyResponse(data: unknown): Convoy[] {
+  if (!data || typeof data !== 'object') return [];
+
+  const response = data as ConvoyApiResponse;
+  if (!response.convoys || !Array.isArray(response.convoys)) {
+    // Maybe it's a flat array
+    if (Array.isArray(data)) {
+      return data.map((c) => ({
+        id: c.id || String(Math.random()),
+        name: c.name || 'Unnamed Convoy',
+        description: c.description,
+        beads: (c.beads || []).map((b: { id?: string; title?: string; status?: string }) => ({
+          id: b.id || String(Math.random()),
+          title: b.title || 'Untitled',
+          status: (b.status || 'pending') as 'pending' | 'in_progress' | 'completed' | 'blocked',
+        })),
+        createdAt: c.created_at || new Date().toISOString(),
+        updatedAt: c.updated_at,
+      }));
+    }
+    return [];
+  }
+
+  return response.convoys.map((c) => ({
+    id: c.id || String(Math.random()),
+    name: c.name || 'Unnamed Convoy',
+    description: c.description,
+    beads: (c.beads || []).map((b) => ({
+      id: b.id || String(Math.random()),
+      title: b.title || 'Untitled',
+      status: (b.status || 'pending') as 'pending' | 'in_progress' | 'completed' | 'blocked',
+    })),
+    createdAt: c.created_at || new Date().toISOString(),
+    updatedAt: c.updated_at,
+  }));
+}
 
 export default function Convoys() {
-  const { data: result, isLoading } = useQuery({
+  const { data: result, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['convoys'],
     queryFn: async () => {
       const result = await window.electronAPI?.executeGt(['convoy', 'list', '--json']);
@@ -19,20 +72,31 @@ export default function Convoys() {
     refetchInterval: 10000,
   });
 
+  const convoys = parseConvoyResponse(result);
+
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-white">Convoys</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-white">Convoys</h2>
+        <button
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={isRefetching ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
 
       {isLoading ? (
-        <div className="text-slate-400">Loading convoys...</div>
-      ) : !result ? (
-        <EmptyState />
-      ) : (
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-          <pre className="text-sm text-slate-300 whitespace-pre-wrap">
-            {JSON.stringify(result, null, 2)}
-          </pre>
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin mr-2" />
+          <span className="text-slate-400">Loading convoys...</span>
         </div>
+      ) : convoys.length > 0 ? (
+        <ConvoyList convoys={convoys} />
+      ) : (
+        <EmptyState />
       )}
     </div>
   );

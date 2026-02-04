@@ -9,6 +9,7 @@ interface LogConfig {
   enableFile: boolean;
   maxFileSize: number; // bytes
   maxFiles: number;
+  customLogPath?: string; // Custom log directory path
 }
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -43,11 +44,21 @@ export function configureLogger(newConfig: Partial<LogConfig>): void {
 }
 
 /**
+ * Get the log directory path
+ */
+export function getLogDirectory(): string {
+  if (config.customLogPath && config.customLogPath.trim()) {
+    return config.customLogPath;
+  }
+  return path.join(app.getPath('userData'), 'logs');
+}
+
+/**
  * Initialize file logging
  */
 function initFileLogging(): void {
   try {
-    const logDir = path.join(app.getPath('userData'), 'logs');
+    const logDir = getLogDirectory();
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
     }
@@ -96,30 +107,34 @@ function cleanupOldLogs(logDir: string): void {
 }
 
 /**
- * Format a log message
+ * Format a single data item for logging
  */
-function formatMessage(level: LogLevel, module: string, message: string, data?: unknown): string {
+function formatDataItem(data: unknown): string {
+  if (data === undefined) return '';
+  if (data instanceof Error) {
+    return `${data.message}\n${data.stack}`;
+  } else if (typeof data === 'object' && data !== null) {
+    try {
+      return JSON.stringify(data);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(data);
+}
+
+/**
+ * Format a log message with variadic arguments (like console.log)
+ */
+function formatMessage(level: LogLevel, module: string, ...args: unknown[]): string {
   const timestamp = new Date().toISOString();
   const levelStr = level.toUpperCase().padEnd(5);
   const moduleStr = module ? `[${module}]` : '';
 
-  let formatted = `${timestamp} ${levelStr} ${moduleStr} ${message}`;
+  // Join all arguments with space, similar to console.log behavior
+  const messageContent = args.map(arg => formatDataItem(arg)).join(' ');
 
-  if (data !== undefined) {
-    if (data instanceof Error) {
-      formatted += ` ${data.message}\n${data.stack}`;
-    } else if (typeof data === 'object') {
-      try {
-        formatted += ` ${JSON.stringify(data)}`;
-      } catch {
-        formatted += ` [Object]`;
-      }
-    } else {
-      formatted += ` ${data}`;
-    }
-  }
-
-  return formatted;
+  return `${timestamp} ${levelStr} ${moduleStr} ${messageContent}`;
 }
 
 /**
@@ -151,36 +166,37 @@ function shouldLog(level: LogLevel): boolean {
 
 /**
  * Create a logger instance for a specific module
+ * Supports variadic arguments like console.log
  */
 export function createLogger(module: string) {
   return {
-    debug: (message: string, data?: unknown) => {
+    debug: (...args: unknown[]) => {
       if (shouldLog('debug')) {
-        const formatted = formatMessage('debug', module, message, data);
+        const formatted = formatMessage('debug', module, ...args);
         console.debug(formatted);
         writeToFile(formatted);
       }
     },
 
-    info: (message: string, data?: unknown) => {
+    info: (...args: unknown[]) => {
       if (shouldLog('info')) {
-        const formatted = formatMessage('info', module, message, data);
+        const formatted = formatMessage('info', module, ...args);
         console.log(formatted);
         writeToFile(formatted);
       }
     },
 
-    warn: (message: string, data?: unknown) => {
+    warn: (...args: unknown[]) => {
       if (shouldLog('warn')) {
-        const formatted = formatMessage('warn', module, message, data);
+        const formatted = formatMessage('warn', module, ...args);
         console.warn(formatted);
         writeToFile(formatted);
       }
     },
 
-    error: (message: string, data?: unknown) => {
+    error: (...args: unknown[]) => {
       if (shouldLog('error')) {
-        const formatted = formatMessage('error', module, message, data);
+        const formatted = formatMessage('error', module, ...args);
         console.error(formatted);
         writeToFile(formatted);
       }

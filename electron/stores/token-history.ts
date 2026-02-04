@@ -1,4 +1,5 @@
 import Store from 'electron-store';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 export interface HourlyUsage {
   hour: number; // 0-23
@@ -31,6 +32,7 @@ export function initTokenHistoryStore(): void {
   store = new Store<TokenHistoryStore>({
     name: 'token-history',
     defaults,
+    encryptionKey: getEncryptionKey(),
   });
 
   // Clean up old entries on init

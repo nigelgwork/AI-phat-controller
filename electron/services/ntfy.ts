@@ -2,6 +2,7 @@ import Store from 'electron-store';
 import { Notification } from 'electron';
 import { safeBroadcast } from '../utils/safe-ipc';
 import { createLogger } from '../utils/logger';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 const log = createLogger('Ntfy');
 
@@ -78,6 +79,7 @@ export function initNtfyStore(): void {
   store = new Store<NtfyStore>({
     name: 'ntfy',
     defaults,
+    encryptionKey: getEncryptionKey(),
   });
 }
 

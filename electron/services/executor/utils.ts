@@ -71,18 +71,18 @@ export function getValidCwd(preferredPath: string): string {
  * Parse token usage data from Claude's JSON response
  */
 export function parseTokenUsage(json: Record<string, unknown>): TokenUsageData {
-  const usage = json.usage || {};
-  const modelUsage = json.modelUsage || {};
+  const usage = (json.usage || {}) as Record<string, unknown>;
+  const modelUsage = (json.modelUsage || {}) as Record<string, Record<string, unknown>>;
   const modelKeys = Object.keys(modelUsage);
-  const modelData = modelKeys.length > 0 ? modelUsage[modelKeys[0]] : {};
+  const modelData = modelKeys.length > 0 ? modelUsage[modelKeys[0]] : ({} as Record<string, unknown>);
 
   return {
-    inputTokens: usage.input_tokens || modelData.inputTokens || 0,
-    outputTokens: usage.output_tokens || modelData.outputTokens || 0,
-    cacheReadInputTokens: usage.cache_read_input_tokens || modelData.cacheReadInputTokens || 0,
-    cacheCreationInputTokens: usage.cache_creation_input_tokens || modelData.cacheCreationInputTokens || 0,
-    contextWindow: modelData.contextWindow || 200000,
-    maxOutputTokens: modelData.maxOutputTokens || 64000,
+    inputTokens: (usage.input_tokens as number) || (modelData.inputTokens as number) || 0,
+    outputTokens: (usage.output_tokens as number) || (modelData.outputTokens as number) || 0,
+    cacheReadInputTokens: (usage.cache_read_input_tokens as number) || (modelData.cacheReadInputTokens as number) || 0,
+    cacheCreationInputTokens: (usage.cache_creation_input_tokens as number) || (modelData.cacheCreationInputTokens as number) || 0,
+    contextWindow: (modelData.contextWindow as number) || 200000,
+    maxOutputTokens: (modelData.maxOutputTokens as number) || 64000,
   };
 }
 

@@ -3,6 +3,7 @@ import { getExecutor } from './executor';
 import { listTasks, updateTask, getTaskById } from './tasks';
 import type { Task } from './tasks';
 import { safeBroadcast } from '../utils/safe-ipc';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 // Generate a simple unique ID
 function generateId(): string {
@@ -79,6 +80,7 @@ export function initMayorStore(): void {
   store = new Store<MayorStore>({
     name: 'mayor',
     defaults,
+    encryptionKey: getEncryptionKey(),
   });
 
   // Reset state on initialization (don't resume from previous session)

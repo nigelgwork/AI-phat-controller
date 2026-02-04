@@ -6,6 +6,7 @@ import type { Task } from './tasks';
 import { safeBroadcast } from '../utils/safe-ipc';
 import { recordHourlyUsage } from '../stores/token-history';
 import { createLogger } from '../utils/logger';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 const log = createLogger('Controller');
 
@@ -163,6 +164,7 @@ export function initControllerStore(): void {
   store = new Store<ControllerStore>({
     name: 'controller',
     defaults,
+    encryptionKey: getEncryptionKey(),
   });
 
   // Reset state on initialization (don't resume from previous session)

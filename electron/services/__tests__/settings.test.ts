@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Create mock data store
 const mockData = new Map<string, unknown>();
 
+// Mock encryption-key module
+vi.mock('../../utils/encryption-key', () => ({
+  getEncryptionKey: vi.fn().mockReturnValue('mock-encryption-key-32-chars-long'),
+}));
+
 // Mock electron-store with a class-based mock
 vi.mock('electron-store', () => {
   class MockStore {

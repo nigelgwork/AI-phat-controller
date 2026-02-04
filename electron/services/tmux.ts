@@ -2,6 +2,7 @@ import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import Store from 'electron-store';
 import { createLogger } from '../utils/logger';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 const log = createLogger('Tmux');
 const execAsync = promisify(exec);
@@ -37,6 +38,7 @@ const tmuxStore = new Store<TmuxStore>({
   defaults: {
     sessionMeta: {},
   },
+  encryptionKey: getEncryptionKey(),
 });
 
 export interface TmuxSession {

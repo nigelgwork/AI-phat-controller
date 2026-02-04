@@ -1,5 +1,6 @@
 import Store from 'electron-store';
 import { randomUUID } from 'crypto';
+import { getEncryptionKey } from '../utils/encryption-key';
 
 // Personality trait levels
 export type TraitLevel = 'low' | 'medium' | 'high';
@@ -35,6 +36,7 @@ const clawdbotStore = new Store<ClawdbotStore>({
     personalities: [],
     currentPersonalityId: null,
   },
+  encryptionKey: getEncryptionKey(),
 });
 
 // Default built-in personalities
