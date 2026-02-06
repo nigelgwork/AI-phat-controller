@@ -1,5 +1,7 @@
 # AI Controller - Electron Migration Plan
 
+> **STATUS: ARCHIVED** - This migration is complete. The project has since moved to a plain Node.js server as primary run mode (see [ARCHITECTURE.md](ARCHITECTURE.md)). Electron code remains in `electron/` as legacy but is no longer the primary deployment target. This document is preserved as historical reference.
+
 ## Overview
 
 Migrate AI Controller from a Next.js web app to a **self-contained Electron desktop application** for Windows 11. Everything bundled in a single .exe installer, with support for connecting to Claude Code installed either natively on Windows or within WSL.
@@ -454,7 +456,7 @@ nsis:
 publish:
   provider: github
   owner: nigelgwork
-  repo: AI-fat-controller
+  repo: AI-phat-controller
 ```
 
 ## Settings Schema

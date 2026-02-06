@@ -34,9 +34,9 @@ export async function detectModes(): Promise<ModeStatus> {
         available: true,
         claudePath,
       };
-      // Version check can hang in containers, so don't let it block detection
+      // Version check can be slow, so don't let it block detection
       try {
-        const { stdout: version } = await execAsync('claude --version', { timeout: 3000 });
+        const { stdout: version } = await execAsync('claude --version', { timeout: 5000 });
         status.linux.version = version.trim();
       } catch {
         log.info('Claude found but version check timed out');
@@ -67,16 +67,15 @@ export async function getDebugInfo() {
     claudePath = stdout.trim() || 'Not found';
   } catch { /* ignore */ }
 
+  const isDocker = fs.existsSync('/.dockerenv');
+
   return {
-    isPackaged: process.env.NODE_ENV === 'production',
-    resourcesPath: '',
-    gtPath: '',
-    gtExists: false,
-    bdPath: '',
-    bdExists: false,
+    isDocker,
+    nodeVersion: process.version,
+    platform: process.platform,
     claudePath,
     gastownPath,
-    gastownExists: fs.existsSync(gastownPath),
+    gastownExists: gastownPath ? fs.existsSync(gastownPath) : false,
     executionMode: 'linux' as const,
   };
 }

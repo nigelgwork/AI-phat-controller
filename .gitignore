@@ -60,3 +60,4 @@ yarn-error.log*
 
 # Local build binaries
 bin/
+!bin/cli.js

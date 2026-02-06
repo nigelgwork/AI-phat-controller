@@ -20,11 +20,8 @@ RUN npm rebuild better-sqlite3
 # Copy source code
 COPY . .
 
-# Build frontend and server
-RUN pnpm run build:frontend && pnpm run build:server
-
-# Copy migrations to the correct location (where compiled code expects them)
-RUN mkdir -p /app/dist-server/server/db && cp -r /app/server/db/migrations /app/dist-server/server/db/
+# Build frontend, server, and copy assets
+RUN pnpm run build
 
 # Create data directory
 RUN mkdir -p /app/data

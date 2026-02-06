@@ -1,78 +1,54 @@
 # Security Documentation
 
-This document describes the security model and practices implemented in AI Fat Controller.
-
 ## Overview
 
-AI Fat Controller is an Electron application that orchestrates AI agents (Claude Code) to perform software development tasks. Given its privileged access to execute commands and modify files, security is a critical concern.
+AI Phat Controller is a local developer tool that orchestrates AI agents (Claude Code) to perform software development tasks. It runs as an Express.js server on localhost. Given its privileged access to execute commands and modify files, security is a critical concern.
+
+## Deployment Model
+
+The application runs locally on the developer's machine (or in a Docker container on the same host). It is **not designed for public internet exposure**. The Express server binds to `0.0.0.0:3001` for Docker compatibility but should only be accessed from localhost.
 
 ## Command Execution Model
 
 ### Allowed Commands
 
-The application restricts command execution to a whitelist of approved commands:
+The application restricts command execution to approved commands:
 
 | Command | Purpose | Notes |
 |---------|---------|-------|
 | `claude` | Claude Code CLI | Main AI execution engine |
-| `gt` | Gas Town CLI | Multi-agent orchestrator |
-| `bd` | Beads CLI | Git-backed issue tracker |
-| `git` | Version control | Used for project status checks |
-| `wsl.exe` | WSL interop | Windows-only, for WSL mode detection |
-
-### Why `shell: true` is Required on Windows
-
-On Windows, the application uses `shell: true` when spawning processes in certain scenarios:
-
-1. **Path resolution**: Windows requires shell expansion to resolve commands in PATH
-2. **WSL interop**: `wsl.exe` commands require shell context for proper argument handling
-3. **Environment inheritance**: Shell ensures proper environment variable inheritance
-
-**Mitigations**:
-- All command inputs are validated and sanitized before execution
-- Arguments are passed as arrays (not concatenated strings) where possible
-- No user-provided strings are directly interpolated into commands
+| `gt` | Gas Town CLI | Multi-agent orchestrator (optional) |
+| `bd` | Beads CLI | Git-backed issue tracker (optional) |
 
 ### Why `--dangerously-skip-permissions` is Used
 
 Claude Code requires explicit permission for file system operations. The `--dangerously-skip-permissions` flag is used because:
 
 1. **User-initiated tasks**: All Claude operations are explicitly requested by the user
-2. **Approval workflow**: High-risk operations (git push, large edits) require manual approval
+2. **Approval workflow**: High-risk operations can require manual approval
 3. **Sandboxed execution**: Operations are confined to the user's project directories
 4. **Audit trail**: All actions are logged and can be reviewed
 
-**Important**: This flag should only be used in controlled environments where the user trusts the AI's actions. The approval queue provides a safety net for destructive operations.
+**Important**: This flag should only be used in controlled environments where the user trusts the AI's actions.
 
 ## Data Storage Security
 
-### Electron-Store
+### SQLite Database
 
-The application uses `electron-store` for persistent data storage. Stores contain:
+Settings, tasks, conversations, and session data are stored in a SQLite database at `./data/controller.db`.
 
-- **settings**: User preferences (non-sensitive)
-- **controller**: Task state and approval queue
-- **ntfy**: Notification configuration (may contain auth tokens)
-- **project-briefs**: Project analysis data
-- **token-history**: Usage analytics
-
-### Encryption (Planned)
-
-Future versions will implement encryption for stores containing sensitive data:
-
-- Encryption key generated using `crypto.randomBytes(32)`
-- Key stored in OS keychain (via `keytar` or platform-specific secure storage)
-- AES-256-GCM encryption for store data
+- Database is local to the machine
+- No encryption at rest (planned for future)
+- WAL mode provides crash safety
 
 ### Sensitive Data Handling
 
-The application handles the following sensitive data:
-
 | Data Type | Storage | Protection |
 |-----------|---------|------------|
-| ntfy auth tokens | electron-store | Planned encryption |
-| Conversation history | JSONL files | File system permissions |
-| API responses | Memory only | Not persisted |
+| ntfy auth tokens | SQLite settings | Planned encryption |
+| Conversation history | SQLite | File system permissions |
+| Claude Code output | Memory + SQLite | Not persisted beyond session |
+| API responses | Memory only | Garbage collected |
 
 ## Network Security
 
@@ -82,7 +58,7 @@ The application communicates with:
 
 1. **Claude Code CLI**: Local process communication via stdin/stdout
 2. **ntfy server**: Optional push notifications (user-configured endpoint)
-3. **GitHub releases**: Auto-update checks (HTTPS)
+3. **No cloud APIs**: Does not call Anthropic API directly
 
 ### MCP Server Connections
 
@@ -101,58 +77,13 @@ User prompts sent to Claude Code are passed through without modification to pres
 - Maximum prompt length limits prevent memory exhaustion
 - Output is streamed and truncated if excessively large
 
-### File Paths
-
-File paths are validated before operations:
-
-- Must be absolute paths
-- Resolved to prevent directory traversal
-- Checked against project boundaries where applicable
-
 ### Command Arguments
 
 Arguments passed to subprocess commands:
 
-- Validated against expected patterns
+- Validated against expected patterns (Zod schemas)
 - Arrays used instead of string concatenation
 - No shell interpolation of user strings
-
-## Temporary Files
-
-### Cleanup
-
-Temporary files created during execution:
-
-- Stored in session-specific scratchpad directory
-- Cleaned up on application exit
-- Include: intermediate results, temp scripts, working files
-
-### Secure Deletion (Planned)
-
-Future versions will implement secure deletion for files containing conversation data:
-
-- Overwrite file contents with random data before deletion
-- Multiple passes for sensitive files
-- Applied to temp files and cleared conversation history
-
-## Approval Workflow
-
-### High-Risk Operations
-
-The following operations require explicit user approval:
-
-| Action Type | Description | Auto-Approve Option |
-|-------------|-------------|---------------------|
-| `planning` | Large-scale planning operations | Yes (configurable) |
-| `architecture` | Architectural changes | No |
-| `git_push` | Pushing to remote repositories | No |
-| `large_edit` | Bulk file modifications | No |
-
-### Approval Timeout
-
-- Approval requests have configurable timeouts
-- Expired requests are marked as timed out (not auto-approved)
-- Desktop notifications alert users to pending approvals
 
 ## Logging
 
@@ -165,23 +96,29 @@ The following operations require explicit user approval:
 
 ### What is NOT Logged
 
-- Full conversation content (stored separately)
+- Full conversation content (stored separately in SQLite)
 - API keys or tokens
 - File contents
 
 ### Log Location
 
-Logs are written to the application data directory:
-- Windows: `%APPDATA%/ai-controller/logs/`
-- macOS: `~/Library/Application Support/ai-controller/logs/`
-- Linux: `~/.config/ai-controller/logs/`
+Logs are written to stdout/stderr (visible in terminal or Docker logs).
+
+## Docker Security
+
+When running in Docker:
+
+- Container runs as root (required for Claude CLI access)
+- Volumes mounted for data persistence and Claude config
+- No ports exposed beyond 3001
+- Health check endpoint at `/api/system/status`
 
 ## Recommendations for Users
 
 1. **Review approvals carefully**: Don't approve operations you don't understand
 2. **Use project boundaries**: Work within defined project directories
 3. **Monitor token usage**: Set appropriate daily/hourly limits
-4. **Keep software updated**: Install updates for security patches
+4. **Don't expose to the internet**: This is a localhost-only tool
 5. **Secure ntfy endpoints**: Use authentication for notification servers
 6. **Review conversation history**: Periodically audit AI interactions
 
@@ -193,9 +130,3 @@ If you discover a security vulnerability:
 2. Email security concerns to the maintainers
 3. Include steps to reproduce the issue
 4. Allow time for a fix before public disclosure
-
-## Version History
-
-| Version | Changes |
-|---------|---------|
-| 0.8.0 | Initial security documentation |

@@ -149,16 +149,13 @@ export interface UpdateStatusType {
 }
 
 export interface DebugInfo {
-  isPackaged: boolean;
-  resourcesPath: string;
-  gtPath: string;
-  gtExists: boolean;
-  bdPath: string;
-  bdExists: boolean;
+  isDocker: boolean;
+  nodeVersion: string;
+  platform: string;
   claudePath: string;
   gastownPath: string;
   gastownExists: boolean;
-  executionMode: 'windows' | 'wsl';
+  executionMode: 'linux';
 }
 
 // Task types

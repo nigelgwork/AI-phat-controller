@@ -1,126 +1,152 @@
-# Gas Town UI
+# AI Phat Controller
 
-Web dashboard for [Gas Town](https://github.com/steveyegge/gastown) - a multi-agent orchestrator for Claude Code.
+A local dashboard and orchestration server for managing Claude Code agents, built on the [Gas Town](https://github.com/steveyegge/gastown) multi-agent framework.
 
-![Gas Town Dashboard](docs/screenshot.png)
+## What It Does
 
-## Features
+- **Dashboard**: Monitor agents, tasks, sessions, and token usage from a web UI
+- **Controller**: Natural language interface to coordinate Claude Code across projects
+- **Session Management**: Track, resume, and manage Claude Code sessions
+- **Task Tracking**: Create and manage tasks with status workflows
+- **Clawdbot**: Configurable AI assistant with personality profiles
+- **MCP Support**: Configure Model Context Protocol servers for your agents
 
-- **Town Overview**: Real-time stats on agents, work items, and system health
-- **Mayor Chat**: AI-powered chat interface to coordinate work (requires Anthropic API key)
-- **Agent Management**: Monitor agent status, context usage, and trigger handoffs
-- **Convoy Tracking**: Track grouped work packages with progress visualization
-- **Beads Browser**: Filter and search work items by status, type, and priority
-- **Dependency Graph**: Interactive React Flow visualization of work dependencies
-- **Insights Dashboard**: Graph analytics (bottlenecks, keystones, cycles)
-- **Mail Center**: View agent communication and announcements
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI Phat Controller                            │
+│                                                                  │
+│  ┌──────────────────────┐     ┌──────────────────────────────┐  │
+│  │   Frontend (Vite)    │     │   Backend (Express)          │  │
+│  │                      │     │                              │  │
+│  │  React 19 + TS       │────▶│  REST API (:3001)            │  │
+│  │  Tailwind CSS        │     │  WebSocket (live updates)    │  │
+│  │  TanStack Query      │     │  SQLite (better-sqlite3)     │  │
+│  │  React Flow (graphs) │     │                              │  │
+│  │  Zustand (state)     │     │  ┌────────────────────────┐  │  │
+│  │                      │     │  │  Claude Code CLI       │  │  │
+│  │  :5173 (dev)         │     │  │  (spawned as needed)   │  │  │
+│  └──────────────────────┘     │  └────────────────────────┘  │  │
+│                                │                              │  │
+│                                │  ┌────────────────────────┐  │  │
+│                                │  │  Gas Town (gt/bd CLIs) │  │  │
+│                                │  │  (optional)            │  │  │
+│                                │  └────────────────────────┘  │  │
+│                                └──────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed diagrams.
 
 ## Quick Start
 
 ### Prerequisites
 
-- [Go 1.23+](https://go.dev/dl/) - for building Gas Town CLI
-- [Git 2.25+](https://git-scm.com/) - for worktree support
-- [pnpm](https://pnpm.io/) - package manager
+- Node.js 20+
+- [pnpm](https://pnpm.io/)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 
-### Installation
-
-```bash
-# Clone this repo
-git clone https://github.com/yourusername/gastown-ui.git
-cd gastown-ui
-
-# One-command setup
-pnpm setup
-```
-
-The setup script will:
-1. ✅ Check prerequisites
-2. ✅ Clone and build Gas Town (`gt`) and Beads (`bd`) CLIs
-3. ✅ Install Node dependencies
-4. ✅ Initialize a Gas Town workspace at `~/gt`
-
-### Running
+### Install & Run
 
 ```bash
-# Start the dashboard
+# Install dependencies
+pnpm install
+
+# Development (Vite HMR + Express server)
 pnpm dev
+# Frontend: http://localhost:5173
+# API: http://localhost:3001
 
-# Open http://localhost:3000
+# Production build & start
+pnpm start
+# Dashboard: http://localhost:3001
 ```
 
-## Configuration
-
-Create `.env.local`:
+### Docker (alternative)
 
 ```bash
-# Required: Path to your Gas Town workspace
-GASTOWN_PATH=~/gt
-
-# Optional: Enable AI-powered Mayor Chat
-# Get your key at https://console.anthropic.com/settings/keys
-ANTHROPIC_API_KEY=sk-ant-...
+docker compose up --build controller
+# Dashboard: http://localhost:3001
 ```
 
-### Mayor Chat
-
-The Mayor Chat provides an AI-powered interface to coordinate work across your rigs. Without an API key, it runs in "command mode" where you can execute gt/bd commands directly. With an API key, you can use natural language to:
-
-- Create and manage convoys
-- Assign work to agents
-- Check status and get recommendations
-- Coordinate complex multi-rig operations
-
-## Using with Gas Town
-
-```bash
-# Add the CLI tools to your PATH
-export PATH="$PATH:$(pwd)/bin"
-
-# Start the Mayor session (AI coordinator)
-cd ~/gt && gt prime
-
-# Or use individual commands
-gt convoy create "Feature X" issue-123 issue-456
-gt sling issue-123 myproject
-gt convoy list
-```
+Note: Docker mode requires mounting the Claude Code CLI and its config into the container. See `docker-compose.yml` for volume mount examples.
 
 ## Project Structure
 
 ```
-gastown-ui/
-├── src/
-│   ├── app/              # Next.js pages
-│   │   ├── page.tsx      # Town Overview
-│   │   ├── terminal/     # Mayor Chat interface
-│   │   ├── agents/       # Agent management
-│   │   ├── beads/        # Work items
-│   │   ├── convoys/      # Grouped work
-│   │   ├── graph/        # Dependency graph
-│   │   ├── insights/     # Analytics
-│   │   ├── mail/         # Agent mail
-│   │   └── api/          # Backend routes
-│   ├── components/       # Shared UI
-│   ├── lib/              # Utilities
-│   └── types/            # TypeScript types
-├── backend/              # Gas Town source (cloned)
-├── beads-cli/            # Beads source (cloned)
-├── bin/                  # Built CLI binaries
-└── scripts/setup.sh      # Setup script
+ai-controller/
+├── frontend/               # Vite + React app
+│   └── src/
+│       ├── pages/          # 16 page components
+│       ├── components/     # Shared UI components
+│       ├── api/            # API client (server-api.ts)
+│       ├── hooks/          # Custom React hooks
+│       └── types/          # TypeScript definitions
+├── server/                 # Express.js backend
+│   ├── routes/             # 21 API route modules
+│   ├── db/                 # SQLite database + migrations
+│   │   └── repositories/   # Data access layer
+│   ├── services/           # Business logic
+│   ├── middleware/          # Validation, error handling
+│   └── websocket.ts        # WebSocket server
+├── shared/                 # Types shared between frontend/server
+├── electron/               # Electron desktop wrapper (legacy)
+├── bin/cli.js              # CLI entry point (npx support)
+├── Dockerfile              # Docker image
+└── docker-compose.yml      # Docker Compose config
 ```
 
 ## Tech Stack
 
-- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS 4
-- **Visualization**: @xyflow/react (React Flow)
-- **Data Fetching**: TanStack Query
-- **Icons**: Lucide React
-- **Backend**: Gas Town (Go), Beads (Go)
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, TypeScript 5, Vite 6, Tailwind CSS 3 |
+| State | TanStack Query, Zustand |
+| Visualization | @xyflow/react (React Flow) |
+| Backend | Express 4, Node.js 20 |
+| Database | SQLite (better-sqlite3) |
+| Validation | Zod 4 |
+| Real-time | WebSocket (ws) |
+| Testing | Vitest, React Testing Library |
+
+## Development Commands
+
+```bash
+pnpm dev              # Start dev servers (Vite + Express)
+pnpm build            # Build frontend + server + copy assets
+pnpm start            # Build and start production server
+pnpm test:run         # Run test suite
+pnpm lint             # Lint
+pnpm typecheck        # Type check
+```
+
+## Configuration
+
+The server auto-configures on first run. Settings are stored in SQLite at `./data/controller.db`.
+
+Key environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Server port |
+| `DATA_DIR` | `./data` | Database directory |
+| `GASTOWN_PATH` | `~/gt` | Gas Town workspace path |
+
+## Gas Town Integration
+
+This project builds on the [Gas Town](https://github.com/steveyegge/gastown) ecosystem for multi-agent orchestration. Gas Town concepts:
+
+- **Rigs**: Git projects under management
+- **Beads**: Atomic work items (issues) stored in JSONL
+- **Convoys**: Grouped work packages for tracking
+- **Agents**: Mayor (coordinator), Witness (monitor), Polecat (worker)
+
+See [docs/gastown-reference.md](docs/gastown-reference.md) for the full Gas Town guide.
 
 ## License
 
-MIT - This project builds on [Gas Town](https://github.com/steveyegge/gastown) and [Beads](https://github.com/steveyegge/beads), both MIT licensed.
+MIT
 
 ## Credits
 

@@ -50,7 +50,7 @@ async function main() {
     setSetting('defaultMode', 'auto');
     setSetting('gastownPath', gastownPath);
     setSetting('hasCompletedSetup', true);
-    log.info(`Auto-configured for Docker mode (gastownPath: ${gastownPath})`);
+    log.info(`Auto-configured settings (gastownPath: ${gastownPath})`);
   }
 
   // Create Express app

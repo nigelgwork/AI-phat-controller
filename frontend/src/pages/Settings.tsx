@@ -720,16 +720,13 @@ function AboutCard() {
 }
 
 interface DebugInfo {
-  isPackaged: boolean;
-  resourcesPath: string;
-  gtPath: string;
-  gtExists: boolean;
-  bdPath: string;
-  bdExists: boolean;
+  isDocker: boolean;
+  nodeVersion: string;
+  platform: string;
   claudePath: string;
   gastownPath: string;
   gastownExists: boolean;
-  executionMode: 'windows' | 'wsl';
+  executionMode: 'linux';
 }
 
 function DebugCard() {
@@ -765,36 +762,24 @@ function DebugCard() {
         <div className="text-slate-400">Loading...</div>
       ) : debugInfo ? (
         <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="p-3 bg-slate-900 rounded-lg">
-              <p className="text-xs text-slate-400 uppercase mb-1">Packaged</p>
-              <p className="text-white">{debugInfo.isPackaged ? 'Yes (Production)' : 'No (Development)'}</p>
+              <p className="text-xs text-slate-400 uppercase mb-1">Platform</p>
+              <p className="text-white">{debugInfo.platform}</p>
             </div>
             <div className="p-3 bg-slate-900 rounded-lg">
-              <p className="text-xs text-slate-400 uppercase mb-1">Execution Mode</p>
-              <p className="text-white capitalize">{debugInfo.executionMode}</p>
+              <p className="text-xs text-slate-400 uppercase mb-1">Node</p>
+              <p className="text-white">{debugInfo.nodeVersion}</p>
+            </div>
+            <div className="p-3 bg-slate-900 rounded-lg">
+              <p className="text-xs text-slate-400 uppercase mb-1">Docker</p>
+              <p className="text-white">{debugInfo.isDocker ? 'Yes' : 'No'}</p>
             </div>
           </div>
 
           <div className="p-3 bg-slate-900 rounded-lg">
             <p className="text-xs text-slate-400 uppercase mb-1">Claude Code CLI</p>
             <p className="text-white font-mono text-xs break-all">{debugInfo.claudePath}</p>
-          </div>
-
-          <div className="p-3 bg-slate-900 rounded-lg">
-            <div className="flex items-center gap-2 mb-1">
-              <StatusIcon exists={debugInfo.gtExists} />
-              <p className="text-xs text-slate-400 uppercase">Gas Town CLI (gt)</p>
-            </div>
-            <p className="text-white font-mono text-xs break-all">{debugInfo.gtPath}</p>
-          </div>
-
-          <div className="p-3 bg-slate-900 rounded-lg">
-            <div className="flex items-center gap-2 mb-1">
-              <StatusIcon exists={debugInfo.bdExists} />
-              <p className="text-xs text-slate-400 uppercase">Beads CLI (bd)</p>
-            </div>
-            <p className="text-white font-mono text-xs break-all">{debugInfo.bdPath}</p>
           </div>
 
           <div className="p-3 bg-slate-900 rounded-lg">

@@ -1,6 +1,8 @@
-# AI Fat Controller - Development Roadmap
+# AI Phat Controller - Development Roadmap
 
 This document outlines a phased approach to address all identified issues and complete planned features.
+
+> **Note**: The project has moved from Electron desktop app to plain Node.js server as the primary run mode (v1.4.0+). Phases 0-2 and 4 are substantially complete. Docker remains supported as an alternative deployment.
 
 ---
 
@@ -344,8 +346,9 @@ Each task can be tracked using the checkbox format above. When starting work:
 | v0.8.0 | Phase 1+2 | Feature complete |
 | v0.9.0 | Phase 3+4 | Production ready |
 | v1.0.0 | Phase 5 | Full dashboard |
-| v1.x | Phase 6 | Advanced features |
+| v1.4.0 | Server mode | Plain Node.js primary, Docker optional |
+| v2.x | Phase 6 | Advanced features, npm package distribution |
 
 ---
 
-*Last updated: 2026-02-03 (Progress: Phases 0, 1, 2, 4 substantially complete)*
+*Last updated: 2026-02-06 (Progress: Phases 0, 1, 2, 4 substantially complete. v1.4.0: migrated to plain Node.js server mode.)*

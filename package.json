@@ -3,14 +3,17 @@
   "version": "1.4.0",
   "description": "AI Controller - Multi-agent orchestration dashboard",
   "private": true,
-  "main": "dist-electron/main.js",
+  "main": "dist-server/server/index.js",
+  "bin": {
+    "ai-phat-controller": "bin/cli.js"
+  },
   "scripts": {
-    "dev": "vite",
-    "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "build": "tsc && vite build && electron-builder",
+    "start": "pnpm run build && node dist-server/server/index.js",
+    "dev": "concurrently --kill-others \"vite\" \"tsx watch server/index.ts\"",
+    "build": "pnpm run build:frontend && pnpm run build:server && pnpm run copy-assets",
     "build:frontend": "vite build",
-    "build:electron": "tsc -p tsconfig.electron.json",
-    "build:go": "bash scripts/build-go-tools.sh",
+    "build:server": "tsc -p tsconfig.server.json",
+    "copy-assets": "cp -r server/db/migrations dist-server/server/db/",
     "preview": "vite preview",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -18,10 +21,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "dist": "npm run build:go && npm run build && electron-builder --win",
-    "dist:win": "npm run build:go && npm run build && electron-builder --win --publish never",
     "dev:server": "tsx watch server/index.ts",
-    "build:server": "tsc -p tsconfig.server.json",
     "docker:build": "docker build -t ai-controller .",
     "docker:run": "docker-compose up"
   },
@@ -29,8 +29,6 @@
     "better-sqlite3": "^11.7.0",
     "compression": "^1.7.5",
     "cors": "^2.8.5",
-    "electron-store": "^8.2.0",
-    "electron-updater": "^6.7.3",
     "express": "^4.21.2",
     "helmet": "^8.0.0",
     "ws": "^8.18.0",
@@ -56,6 +54,8 @@
     "concurrently": "^9.2.1",
     "electron": "^40.1.0",
     "electron-builder": "^26.4.0",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.7.3",
     "eslint": "^9.18.0",
     "jsdom": "^28.0.0",
     "lucide-react": "^0.562.0",
@@ -74,40 +74,11 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron",
+      "better-sqlite3",
       "esbuild"
     ],
     "overrides": {
       "tar": ">=7.5.7"
-    }
-  },
-  "build": {
-    "appId": "com.aicontroller.app",
-    "productName": "AI Controller",
-    "directories": {
-      "output": "release"
-    },
-    "extraResources": [
-      {
-        "from": "resources/bin",
-        "to": "bin",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "resources/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "nigelgwork",
-      "repo": "AI-fat-controller"
     }
   }
 }

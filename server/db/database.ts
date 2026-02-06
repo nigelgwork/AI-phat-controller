@@ -44,7 +44,11 @@ function runMigrations(db: Database.Database): void {
     )
   `);
 
-  const migrationsDir = path.join(__dirname, 'migrations');
+  let migrationsDir = path.join(__dirname, 'migrations');
+  if (!fs.existsSync(migrationsDir)) {
+    // Fallback for dev mode (tsx) where __dirname is the source directory
+    migrationsDir = path.join(process.cwd(), 'server/db/migrations');
+  }
   if (!fs.existsSync(migrationsDir)) return;
 
   const files = fs.readdirSync(migrationsDir)

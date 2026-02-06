@@ -4,47 +4,61 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-AI Controller (forked from Gastown UI) is a dashboard + backend for multi-agent orchestration. It includes:
+AI Phat Controller is a local dashboard + backend for multi-agent orchestration with Claude Code. It consists of:
 
-- **Frontend**: Next.js 16 dashboard for monitoring agents, beads, convoys, and insights
-- **Backend**: Gas Town CLI (`gt`) - the orchestrator (MIT licensed, from steveyegge/gastown)
-- **Beads CLI**: (`bd`) - git-backed issue tracker (MIT licensed, from steveyegge/beads)
-- **Claude Code Bridge**: Integration layer that routes natural language commands through Claude Code CLI
+- **Frontend**: Vite + React 19 SPA for monitoring agents, tasks, sessions, and settings
+- **Backend**: Express.js server with SQLite database, REST API, and WebSocket support
+- **Claude Code Integration**: Spawns Claude Code CLI as child processes for AI operations
+- **Gas Town Integration**: Optional support for Gas Town (gt) and Beads (bd) CLIs
 
 ## Quick Start
 
 ```bash
-# One command setup
-pnpm setup
-
-# Start the dashboard
-pnpm dev
+pnpm install          # Install dependencies
+pnpm dev              # Start Vite (:5173) + Express (:3001)
+pnpm start            # Build and start production server
+pnpm test:run         # Run tests
 ```
 
-The setup script will:
-1. Check prerequisites (Go 1.23+, Git, pnpm)
-2. Build `gt` and `bd` CLI tools to `./bin/`
-3. Install Node dependencies
-4. Initialize a Gas Town workspace at `~/gt`
+## Architecture
+
+```
+Frontend (Vite + React)          Backend (Express.js)
+:5173 (dev) / :3001 (prod)      :3001
+
+  React 19 + TypeScript            REST API (21 routes)
+  TanStack Query                   WebSocket (live updates)
+  Zustand                          SQLite (better-sqlite3)
+  @xyflow/react                    Claude Code CLI (spawned)
+  Tailwind CSS 3                   Gas Town CLIs (optional)
+```
+
+In development, Vite runs on :5173 with HMR and proxies API calls to Express on :3001. In production, Express serves the built frontend from `dist/`.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed diagrams.
 
 ## Development Commands
 
 ```bash
-pnpm setup       # Full setup (Go tools + Node deps + workspace init)
-pnpm dev         # Start dashboard at http://localhost:3000
-pnpm terminal    # Start terminal WebSocket server (port 3001)
-pnpm dev:all     # Start both dashboard and terminal server
-pnpm gastown     # Start both with GASTOWN_PATH env set
-pnpm build       # Build for production
+pnpm dev              # Start both Vite + Express (concurrently)
+pnpm dev:server       # Start Express only (tsx watch)
+pnpm build            # Build frontend + server + copy migration assets
+pnpm build:frontend   # Build Vite frontend to dist/
+pnpm build:server     # Compile server TypeScript to dist-server/
+pnpm start            # Build everything then start server
+pnpm test:run         # Run Vitest test suite
+pnpm lint             # ESLint
+pnpm typecheck        # TypeScript type check
 ```
 
 ## Environment Variables
 
-```bash
-GASTOWN_PATH=~/gt   # Path to your Gas Town workspace (default: ~/gt)
-```
-
-Create `.env.local` with your configuration.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Server port |
+| `DATA_DIR` | `./data` | SQLite database directory |
+| `GASTOWN_PATH` | `~/gt` | Gas Town workspace path |
+| `EXECUTION_MODE` | `linux` | Execution mode |
 
 ---
 
@@ -52,45 +66,20 @@ Create `.env.local` with your configuration.
 
 **DO NOT spawn multiple concurrent processes.** Previous sessions crashed bash by spawning too many processes.
 
-### Rules for Claude Code When Working Here:
+### Rules:
 
-1. **NEVER run dev servers in background** - `pnpm dev`, `pnpm terminal`, `pnpm gastown` spawn multiple child processes
+1. **NEVER run dev servers in background** - `pnpm dev` spawns multiple child processes via concurrently
 2. **NEVER use `run_in_background: true`** for npm/pnpm commands in this project
 3. **ONE process at a time** - Kill existing processes before starting new ones
 4. **Check running processes first** - Run `pgrep -a node` before spawning new processes
-5. **Use timeouts** - Always use timeout for any exec calls (already implemented in route.ts)
-6. **Prefer direct commands** - Use `gt rig list` directly instead of natural language when possible
+5. **Use timeouts** - Always use timeout for any exec calls
 
 ### Safe Testing Workflow:
 
 ```bash
-# 1. Check what's running
-pgrep -a node
-
-# 2. Kill any existing dev servers
-pkill -f "next dev" || true
-
-# 3. Run ONE command in foreground (not background)
-pnpm dev
-# Ctrl+C to stop when done
-
-# 4. For API testing, use curl instead of running dev server
-curl http://localhost:3000/api/beads
-```
-
-### Dangerous Patterns to Avoid:
-
-```bash
-# BAD: Running multiple servers
-pnpm dev &
-pnpm terminal &
-pnpm gastown &
-
-# BAD: Background with concurrently
-pnpm dev:all &
-
-# BAD: Multiple Claude Code calls in parallel
-for i in {1..10}; do claude "test" & done
+pgrep -a node                  # Check what's running
+pkill -f "next dev" || true    # Kill any existing dev servers
+pnpm dev                       # Run ONE command in foreground
 ```
 
 ---
@@ -99,176 +88,146 @@ for i in {1..10}; do claude "test" & done
 
 ```
 ai-controller/
-├── src/                    # Next.js frontend
-│   ├── app/                # App Router pages
-│   │   ├── page.tsx        # Town Overview (home)
-│   │   ├── agents/         # Agent management
-│   │   ├── beads/          # Work items list
-│   │   ├── convoys/        # Grouped work packages
-│   │   ├── graph/          # React Flow dependency graph
-│   │   ├── insights/       # Graph analytics (from bv)
-│   │   ├── mail/           # Agent communication
-│   │   ├── terminal/       # Controller chat (Claude Code powered)
-│   │   └── api/            # API routes (calls gt/bd CLIs + Claude Code)
-│   ├── components/         # Shared components
-│   ├── lib/                # Utilities (beads.ts, gastown.ts)
-│   └── types/              # TypeScript definitions
-├── backend/                # Gas Town Go source (cloned)
-├── beads-cli/              # Beads Go source (cloned)
-├── bin/                    # Built CLI binaries (gt, bd)
-├── scripts/
-│   ├── setup.sh            # Full setup script
-│   └── claude-bridge.sh    # Claude Code CLI bridge
-└── docs/                   # Documentation
+├── frontend/                   # Vite + React SPA
+│   ├── src/
+│   │   ├── pages/              # Page components (16 pages)
+│   │   │   ├── Dashboard.tsx   # Overview stats
+│   │   │   ├── Controller.tsx  # AI Controller chat
+│   │   │   ├── Tasks.tsx       # Task management
+│   │   │   ├── Sessions.tsx    # Claude Code sessions
+│   │   │   ├── Projects.tsx    # Project management
+│   │   │   ├── Settings.tsx    # Configuration + debug
+│   │   │   ├── Clawdbot.tsx    # AI assistant
+│   │   │   ├── Agents.tsx      # Gas Town agents
+│   │   │   ├── Beads.tsx       # Gas Town work items
+│   │   │   ├── Convoys.tsx     # Grouped work
+│   │   │   └── ...
+│   │   ├── components/         # Shared UI (26+ components)
+│   │   ├── api/                # API client (server-api.ts)
+│   │   ├── hooks/              # Custom React hooks
+│   │   └── types/              # TypeScript definitions
+│   └── index.html
+│
+├── server/                     # Express.js backend
+│   ├── index.ts                # Server entry point
+│   ├── routes/                 # API routes (21 modules)
+│   │   ├── tasks.ts
+│   │   ├── claude.ts
+│   │   ├── settings.ts
+│   │   ├── projects.ts
+│   │   ├── agents.ts
+│   │   ├── controller.ts
+│   │   ├── conversations.ts
+│   │   ├── execution-sessions.ts
+│   │   ├── claude-sessions.ts
+│   │   ├── clawdbot.ts
+│   │   ├── token-history.ts
+│   │   ├── mode.ts
+│   │   ├── system.ts
+│   │   └── ...
+│   ├── db/
+│   │   ├── database.ts         # SQLite init + migrations
+│   │   ├── repositories/       # Data access layer (13 repos)
+│   │   └── migrations/         # SQL migration files
+│   ├── services/               # Business logic
+│   │   ├── executor/           # Claude Code execution
+│   │   ├── mode-detection.ts   # Linux/Docker/WSL detection
+│   │   ├── settings.ts         # Settings service
+│   │   └── ...
+│   ├── middleware/              # Express middleware
+│   ├── utils/                  # Logger, paths, errors
+│   └── websocket.ts            # WebSocket server
+│
+├── shared/                     # Types shared between frontend/server
+│   └── types/index.ts
+│
+├── electron/                   # Electron desktop wrapper (legacy)
+│
+├── bin/cli.js                  # CLI entry point (npx)
+├── Dockerfile                  # Docker build
+├── docker-compose.yml          # Docker Compose
+├── vite.config.ts              # Vite config
+├── tsconfig.json               # Frontend TypeScript config
+├── tsconfig.server.json        # Server TypeScript config
+├── vitest.config.ts            # Test config
+└── docs/                       # Documentation
+    ├── ARCHITECTURE.md          # Detailed architecture diagrams
+    ├── SECURITY.md              # Security model
+    ├── folder-structure.md      # Naming conventions
+    ├── clean-code.md            # Code quality guidelines
+    └── gastown-reference.md     # Gas Town ecosystem guide
 ```
-
-## Architecture
-
-### Frontend Tech Stack
-
-- Next.js 16 (App Router) + React 19
-- TypeScript 5
-- Tailwind CSS 4
-- @xyflow/react (React Flow) for dependency graphs
-- TanStack Query for data fetching
-- Lucide React for icons
-
-### Backend Integration
-
-The API routes execute CLI commands or parse files directly:
-
-| Route | Data Source |
-|-------|-------------|
-| `/api/beads` | Parse `.beads/beads.jsonl` |
-| `/api/agents` | `gt status --json` |
-| `/api/convoys` | `gt convoy list --json` |
-| `/api/insights` | `bv --robot-insights` |
-| `/api/mail` | `gt mail inbox --json` |
-| `/api/mayor` | Direct commands or Claude Code bridge |
-| `/api/mayor/status` | Claude Code availability check |
-
-### Claude Code Bridge
-
-The `/api/mayor` endpoint routes requests two ways:
-
-1. **Direct commands** (`gt rig list`, `bd list`) - Executed directly via `execFileAsync`
-2. **Natural language** - Routed through `scripts/claude-bridge.sh` to Claude Code CLI
-
-```
-User Input → API Route → Is direct command?
-                              │
-                    ┌─────────┴─────────┐
-                    │ YES               │ NO
-                    ▼                   ▼
-              execFileAsync       claude-bridge.sh
-              (gt/bd command)     (Claude Code CLI)
-```
-
-### Gas Town Concepts
-
-- **Town**: Workspace root (`~/gt`) containing all projects
-- **Rig**: A git project under Gas Town management
-- **Bead**: Atomic unit of work (issue) stored in JSONL
-- **Convoy**: Grouped beads for tracking related work
-- **Hook**: Where work hangs for an agent (persists across restarts)
-- **Agent Roles**:
-  - Mayor: Cross-rig coordinator
-  - Witness: Monitors polecats per rig
-  - Refinery: Merge queue per rig
-  - Polecat: Ephemeral worker (spawn → work → disappear)
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/lib/beads.ts` | JSONL parser for `.beads/beads.jsonl` |
-| `src/lib/gastown.ts` | CLI wrapper for `gt`, `bd`, `bv` |
-| `src/types/gastown.ts` | TypeScript types (Bead, Agent, Convoy, etc.) |
-| `src/app/api/mayor/route.ts` | Controller API with Claude Code integration |
-| `src/app/terminal/page.tsx` | Controller chat UI |
-| `scripts/claude-bridge.sh` | Claude Code CLI wrapper script |
-| `server/terminal-server.ts` | WebSocket server for terminal (node-pty) |
-| `scripts/setup.sh` | Full setup script |
+| `server/index.ts` | Express server entry, middleware, route registration |
+| `server/db/database.ts` | SQLite init, migrations runner |
+| `server/services/mode-detection.ts` | Detect Claude CLI, Docker, WSL |
+| `server/services/settings.ts` | Settings service (SQLite-backed) |
+| `frontend/src/api/server-api.ts` | Frontend API client |
+| `frontend/src/App.tsx` | React Router setup |
+| `shared/types/index.ts` | Shared TypeScript interfaces |
+| `bin/cli.js` | npm/npx CLI entry point |
 
----
+## API Routes
 
-## Progress Log
+All routes mount under `/api/` in `server/index.ts`:
 
-### 2025-01-22: Claude Code Bridge Integration (In Progress)
+| Route | Source | Purpose |
+|-------|--------|---------|
+| `/api/tasks` | `routes/tasks.ts` | Task CRUD |
+| `/api/projects` | `routes/projects.ts` | Project management |
+| `/api/claude` | `routes/claude.ts` | Execute Claude Code |
+| `/api/sessions` | `routes/execution-sessions.ts` | Session tracking |
+| `/api/conversations` | `routes/conversations.ts` | Chat history |
+| `/api/settings` | `routes/settings.ts` | App settings |
+| `/api/mode` | `routes/mode.ts` | Mode detection |
+| `/api/system` | `routes/system.ts` | Health, version, debug |
+| `/api/controller` | `routes/controller.ts` | AI Controller ops |
+| `/api/clawdbot` | `routes/clawdbot.ts` | Clawdbot agent |
+| `/api/token-history` | `routes/token-history.ts` | Token analytics |
+| `/api/activity` | `routes/activity.ts` | Activity log |
+| `/api/mcp` | `routes/mcp.ts` | MCP server config |
 
-**Goal**: Replace Anthropic API direct calls with Claude Code CLI integration
+## Tech Stack
 
-**Changes Made**:
-- [x] Renamed project from `gastown-ui` to `ai-controller`
-- [x] Rebranded UI: "Gas Town" → "AI Controller", "Mayor" → "Controller"
-- [x] Changed color scheme from amber to cyan
-- [x] Created `scripts/claude-bridge.sh` - Claude Code CLI wrapper
-- [x] Rewrote `/api/mayor/route.ts`:
-  - Switched from `execSync` to `execFileAsync` (safer, async)
-  - Direct command execution for `gt` and `bd` commands
-  - Natural language routing through Claude Code bridge
-  - Added proper timeouts and error handling
-- [x] Updated `/api/mayor/status/route.ts` to check Claude Code availability
-- [x] Updated terminal page UI with Claude Code status banner
-- [x] Updated sidebar icons and labels
+### Frontend
+- React 19 + TypeScript 5
+- Vite 6 (build + HMR)
+- Tailwind CSS 3
+- TanStack Query 5 (data fetching)
+- Zustand 5 (state management)
+- @xyflow/react 12 (dependency graphs)
+- React Router 7
+- Lucide React (icons)
 
-**Remaining**:
-- [ ] Test Claude Code bridge integration end-to-end
-- [ ] Handle Claude Code not installed gracefully
-- [ ] Add conversation context/history support
-- [ ] Commit and push changes
+### Backend
+- Express 4 + TypeScript
+- SQLite via better-sqlite3
+- Zod 4 (runtime validation)
+- ws (WebSocket)
 
-**Issue Encountered**: Session crashed due to spawning too many processes. Added safety documentation above.
+### Testing
+- Vitest 4
+- React Testing Library
+- jsdom
 
----
+## Database
 
-## Project Plan
+SQLite database at `$DATA_DIR/controller.db` (default: `./data/controller.db`).
 
-### Phase 1: Complete Claude Code Integration (Current)
-1. Test the bridge script manually
-2. Verify API routes work with Claude Code
-3. Handle edge cases (Claude Code not installed, timeouts)
-4. Commit current progress
+- Migrations in `server/db/migrations/*.sql`, applied automatically on startup
+- Repository pattern in `server/db/repositories/`
+- WAL mode enabled for concurrent read performance
 
-### Phase 2: Enhanced Controller Features
-1. Add conversation history/context persistence
-2. Implement streaming responses from Claude Code
-3. Add quick action buttons for common workflows
-4. Improve error messages and fallbacks
+## Build Outputs
 
-### Phase 3: Dashboard Improvements
-1. Real-time updates via polling or WebSocket
-2. Better visualization of agent states
-3. Convoy progress tracking
-4. Bead dependency graph
+| Command | Output | Contents |
+|---------|--------|----------|
+| `build:frontend` | `dist/` | Vite-built HTML + JS + CSS |
+| `build:server` | `dist-server/` | Compiled TypeScript |
+| `copy-assets` | `dist-server/server/db/` | SQL migration files |
 
-### Phase 4: Production Readiness
-1. Add proper logging
-2. Error monitoring
-3. Rate limiting for Claude Code calls
-4. Documentation for deployment
-
----
-
-## Using with Gas Town
-
-After setup:
-
-```bash
-# Add PATH to use the CLI tools
-export PATH="$PATH:$(pwd)/bin"
-
-# Initialize workspace (if not done by setup)
-gt install ~/gt
-
-# Add a project
-cd ~/gt
-gt rig add myproject https://github.com/you/repo.git
-
-# Start the Mayor session (AI coordinator)
-gt prime
-
-# Or use the dashboard
-pnpm dev
-# Open http://localhost:3000
-```
+In production, Express serves `dist/` as static files and handles API routes.
