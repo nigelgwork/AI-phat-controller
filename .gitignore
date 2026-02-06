@@ -10,9 +10,13 @@ node_modules/
 
 # Build outputs
 dist/
+dist-server/
 dist-electron/
 release/
 *.unpacked/
+
+# Docker runtime data
+data/
 
 # Go build temp
 .go-build-temp/

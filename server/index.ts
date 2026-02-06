@@ -8,6 +8,8 @@ import { initDatabase, closeDatabase } from './db/database';
 import { initWebSocket } from './websocket';
 import { errorHandler } from './middleware/error-handler';
 import { createLogger } from './utils/logger';
+import { getSetting, setSetting } from './services/settings';
+import { getGastownPath, ensureDir } from './utils/paths';
 
 // Import route modules
 import modeRoutes from './routes/mode';
@@ -39,6 +41,17 @@ async function main() {
   // Initialize database
   log.info('Initializing database...');
   initDatabase();
+
+  // Auto-configure for Docker/Linux mode if setup hasn't been completed
+  if (!getSetting('hasCompletedSetup')) {
+    const gastownPath = getGastownPath();
+    ensureDir(gastownPath);
+    setSetting('executionMode', 'linux');
+    setSetting('defaultMode', 'auto');
+    setSetting('gastownPath', gastownPath);
+    setSetting('hasCompletedSetup', true);
+    log.info(`Auto-configured for Docker mode (gastownPath: ${gastownPath})`);
+  }
 
   // Create Express app
   const app = express();

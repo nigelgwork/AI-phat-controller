@@ -6,8 +6,8 @@
 import * as settingsRepo from '../db/repositories/settings-repo';
 
 export interface AppSettings {
-  executionMode: 'windows' | 'wsl';
-  defaultMode: 'windows' | 'wsl' | 'auto';
+  executionMode: 'windows' | 'wsl' | 'linux';
+  defaultMode: 'windows' | 'wsl' | 'linux' | 'auto';
   windows: {
     claudePath?: string;
   };

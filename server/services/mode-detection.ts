@@ -28,13 +28,19 @@ export async function detectModes(): Promise<ModeStatus> {
   // Check native Claude
   try {
     const { stdout: whichResult } = await execAsync('which claude', { timeout: 5000 });
-    if (whichResult.trim()) {
-      const { stdout: version } = await execAsync('claude --version', { timeout: 10000 });
+    const claudePath = whichResult.trim();
+    if (claudePath) {
       status.linux = {
         available: true,
-        claudePath: whichResult.trim(),
-        version: version.trim(),
+        claudePath,
       };
+      // Version check can hang in containers, so don't let it block detection
+      try {
+        const { stdout: version } = await execAsync('claude --version', { timeout: 3000 });
+        status.linux.version = version.trim();
+      } catch {
+        log.info('Claude found but version check timed out');
+      }
     }
   } catch {
     log.info('Claude not found in PATH');
