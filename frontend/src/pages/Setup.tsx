@@ -1,36 +1,54 @@
 import { useState, useEffect } from 'react';
-import { Monitor, Terminal, Folder, Check, Loader2 } from 'lucide-react';
-import { api } from '@/api';
+import { Monitor, Terminal, Folder, Check, Loader2, Server } from 'lucide-react';
+import { api, isElectron } from '@/api';
 
 interface SetupProps {
   onComplete: () => void;
 }
 
 interface ModeStatus {
-  windows: { available: boolean; claudePath?: string; version?: string };
-  wsl: { available: boolean; distro?: string; version?: string };
+  // Electron format
+  windows?: { available: boolean; claudePath?: string; version?: string };
+  wsl?: { available: boolean; distro?: string; version?: string };
+  // Docker format
+  current?: string;
+  linux?: { available: boolean };
+  windowsInterop?: { available: boolean };
 }
+
+type ExecutionMode = 'windows' | 'wsl' | 'linux';
 
 export default function Setup({ onComplete }: SetupProps) {
   const [step, setStep] = useState(1);
   const [detecting, setDetecting] = useState(true);
   const [modeStatus, setModeStatus] = useState<ModeStatus | null>(null);
-  const [selectedMode, setSelectedMode] = useState<'windows' | 'wsl'>('windows');
+  const [selectedMode, setSelectedMode] = useState<ExecutionMode>('linux');
   const [gastownPath, setGastownPath] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isDockerMode, setIsDockerMode] = useState(false);
 
   useEffect(() => {
     // Detect available modes
-    api.detectModes().then((status) => {
+    api.detectModes().then((status: ModeStatus) => {
       setModeStatus(status);
-      // Auto-select based on availability
-      if (status.windows.available) {
-        setSelectedMode('windows');
-      } else if (status.wsl.available) {
-        setSelectedMode('wsl');
+
+      // Check if this is Docker mode (has linux/windowsInterop keys)
+      const dockerMode = 'linux' in status || 'windowsInterop' in status;
+      setIsDockerMode(dockerMode);
+
+      if (dockerMode) {
+        // Docker/Linux mode
+        setSelectedMode('linux');
+        setGastownPath('~/gt');
+      } else {
+        // Electron/Windows mode
+        if (status.windows?.available) {
+          setSelectedMode('windows');
+        } else if (status.wsl?.available) {
+          setSelectedMode('wsl');
+        }
+        setGastownPath('~/gt');
       }
-      // Set default gastownPath
-      setGastownPath('~/gt');
       setDetecting(false);
     }).catch(() => {
       setDetecting(false);
@@ -51,6 +69,10 @@ export default function Setup({ onComplete }: SetupProps) {
       setSaving(false);
     }
   };
+
+  const linuxAvailable = modeStatus?.linux?.available ?? false;
+  const windowsAvailable = modeStatus?.windows?.available ?? false;
+  const wslAvailable = modeStatus?.wsl?.available ?? false;
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-8">
@@ -76,63 +98,98 @@ export default function Setup({ onComplete }: SetupProps) {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-sm text-slate-400">Claude Code detected:</p>
+                  <p className="text-sm text-slate-400">Execution mode:</p>
 
-                  <button
-                    onClick={() => setSelectedMode('windows')}
-                    disabled={!modeStatus?.windows.available}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
-                      selectedMode === 'windows'
-                        ? 'border-cyan-500 bg-cyan-500/10'
-                        : 'border-slate-600 hover:border-slate-500'
-                    } ${!modeStatus?.windows.available ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Monitor className="w-5 h-5 text-cyan-400" />
-                      <div className="flex-1">
-                        <div className="font-medium text-white">Windows</div>
-                        {modeStatus?.windows.available ? (
-                          <div className="text-sm text-green-400 flex items-center gap-1">
-                            <Check size={12} />
-                            {modeStatus.windows.version || 'Available'}
-                          </div>
-                        ) : (
-                          <div className="text-sm text-slate-500">Not detected</div>
+                  {isDockerMode ? (
+                    // Docker/Linux mode option
+                    <button
+                      onClick={() => setSelectedMode('linux')}
+                      className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
+                        selectedMode === 'linux'
+                          ? 'border-cyan-500 bg-cyan-500/10'
+                          : 'border-slate-600 hover:border-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Server className="w-5 h-5 text-cyan-400" />
+                        <div className="flex-1">
+                          <div className="font-medium text-white">Linux (Docker)</div>
+                          {linuxAvailable ? (
+                            <div className="text-sm text-green-400 flex items-center gap-1">
+                              <Check size={12} />
+                              Claude Code Available
+                            </div>
+                          ) : (
+                            <div className="text-sm text-yellow-400">
+                              Claude Code not detected - install it in the container
+                            </div>
+                          )}
+                        </div>
+                        {selectedMode === 'linux' && (
+                          <Check className="w-5 h-5 text-cyan-400" />
                         )}
                       </div>
-                      {selectedMode === 'windows' && (
-                        <Check className="w-5 h-5 text-cyan-400" />
-                      )}
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setSelectedMode('wsl')}
-                    disabled={!modeStatus?.wsl.available}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
-                      selectedMode === 'wsl'
-                        ? 'border-cyan-500 bg-cyan-500/10'
-                        : 'border-slate-600 hover:border-slate-500'
-                    } ${!modeStatus?.wsl.available ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Terminal className="w-5 h-5 text-cyan-400" />
-                      <div className="flex-1">
-                        <div className="font-medium text-white">WSL</div>
-                        {modeStatus?.wsl.available ? (
-                          <div className="text-sm text-green-400 flex items-center gap-1">
-                            <Check size={12} />
-                            {modeStatus.wsl.distro}: {modeStatus.wsl.version || 'Available'}
+                    </button>
+                  ) : (
+                    // Electron/Windows mode options
+                    <>
+                      <button
+                        onClick={() => setSelectedMode('windows')}
+                        disabled={!windowsAvailable}
+                        className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
+                          selectedMode === 'windows'
+                            ? 'border-cyan-500 bg-cyan-500/10'
+                            : 'border-slate-600 hover:border-slate-500'
+                        } ${!windowsAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Monitor className="w-5 h-5 text-cyan-400" />
+                          <div className="flex-1">
+                            <div className="font-medium text-white">Windows</div>
+                            {windowsAvailable ? (
+                              <div className="text-sm text-green-400 flex items-center gap-1">
+                                <Check size={12} />
+                                {modeStatus?.windows?.version || 'Available'}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-slate-500">Not detected</div>
+                            )}
                           </div>
-                        ) : (
-                          <div className="text-sm text-slate-500">Not detected</div>
-                        )}
-                      </div>
-                      {selectedMode === 'wsl' && (
-                        <Check className="w-5 h-5 text-cyan-400" />
-                      )}
-                    </div>
-                  </button>
+                          {selectedMode === 'windows' && (
+                            <Check className="w-5 h-5 text-cyan-400" />
+                          )}
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedMode('wsl')}
+                        disabled={!wslAvailable}
+                        className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
+                          selectedMode === 'wsl'
+                            ? 'border-cyan-500 bg-cyan-500/10'
+                            : 'border-slate-600 hover:border-slate-500'
+                        } ${!wslAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Terminal className="w-5 h-5 text-cyan-400" />
+                          <div className="flex-1">
+                            <div className="font-medium text-white">WSL</div>
+                            {wslAvailable ? (
+                              <div className="text-sm text-green-400 flex items-center gap-1">
+                                <Check size={12} />
+                                {modeStatus?.wsl?.distro}: {modeStatus?.wsl?.version || 'Available'}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-slate-500">Not detected</div>
+                            )}
+                          </div>
+                          {selectedMode === 'wsl' && (
+                            <Check className="w-5 h-5 text-cyan-400" />
+                          )}
+                        </div>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -151,7 +208,7 @@ export default function Setup({ onComplete }: SetupProps) {
                   type="text"
                   value={gastownPath}
                   onChange={(e) => setGastownPath(e.target.value)}
-                  placeholder="C:\Users\username\gt"
+                  placeholder="~/gt"
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                 />
               </div>
@@ -178,10 +235,8 @@ export default function Setup({ onComplete }: SetupProps) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Claude:</span>
-                  <span className="text-green-400">
-                    {selectedMode === 'windows'
-                      ? modeStatus?.windows.version
-                      : modeStatus?.wsl.version}
+                  <span className={linuxAvailable || windowsAvailable || wslAvailable ? "text-green-400" : "text-yellow-400"}>
+                    {linuxAvailable || windowsAvailable || wslAvailable ? 'Detected' : 'Not detected'}
                   </span>
                 </div>
               </div>
