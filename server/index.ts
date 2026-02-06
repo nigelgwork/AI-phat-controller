@@ -77,7 +77,8 @@ async function main() {
   app.use('/api/beads', beadsRoutes);
 
   // Serve frontend in production
-  const distPath = path.join(__dirname, '../dist');
+  // In Docker: __dirname is /app/dist-server/server, frontend is at /app/dist
+  const distPath = path.join(__dirname, '../../dist');
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api/') && !req.path.startsWith('/ws')) {
