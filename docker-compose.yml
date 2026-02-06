@@ -13,3 +13,12 @@ services:
       - PORT=3001
       - NODE_ENV=production
     restart: unless-stopped
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - NODE_ENV=test
+    profiles:
+      - test

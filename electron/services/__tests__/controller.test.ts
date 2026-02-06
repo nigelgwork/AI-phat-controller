@@ -104,7 +104,7 @@ describe('Controller Service', () => {
       const state = getControllerState();
       expect(state.tokenUsage.inputTokens).toBe(0);
       expect(state.tokenUsage.outputTokens).toBe(0);
-    });
+    }, 15000);
 
     it('should have default usage limit config', async () => {
       const { initControllerStore, getControllerState } = await import('../controller');

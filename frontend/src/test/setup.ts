@@ -236,10 +236,9 @@ const mockElectronAPI = {
   }),
 };
 
-// Expose the mock globally
-beforeAll(() => {
-  (window as unknown as { electronAPI: typeof mockElectronAPI }).electronAPI = mockElectronAPI;
-});
+// Expose the mock globally BEFORE any module evaluation so that
+// api/index.ts resolves to electronAPI instead of serverApi (which makes real fetch calls).
+(window as unknown as { electronAPI: typeof mockElectronAPI }).electronAPI = mockElectronAPI;
 
 afterEach(() => {
   vi.clearAllMocks();
