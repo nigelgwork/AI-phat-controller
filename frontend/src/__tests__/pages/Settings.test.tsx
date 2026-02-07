@@ -66,11 +66,11 @@ describe('Settings Page', () => {
     });
   });
 
-  it('displays workspace path configuration', async () => {
+  it('displays ntfy notifications configuration', async () => {
     render(<Settings />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(screen.getByText('Workspace Path')).toBeInTheDocument();
+      expect(screen.getByText('ntfy Notifications')).toBeInTheDocument();
     });
   });
 

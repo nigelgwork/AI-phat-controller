@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { api } from '@/api';
-import { Settings as SettingsIcon, Monitor, Terminal, Folder, RefreshCw, Download, Info, Cpu, Save, Bug, CheckCircle, XCircle, Bell, Send, Gauge, AlertTriangle, FileText } from 'lucide-react';
+import { Settings as SettingsIcon, Monitor, Terminal, RefreshCw, Download, Info, Cpu, Save, Bug, Bell, Send, Gauge, AlertTriangle, FileText } from 'lucide-react';
 import type { NtfyConfig, UsageLimitConfig } from '@shared/types';
 import MCPServerConfigPanel from '../components/MCPServerConfig';
 
@@ -19,14 +19,12 @@ export default function Settings() {
   });
 
   const [defaultMode, setDefaultMode] = useState<'windows' | 'wsl' | 'auto'>('auto');
-  const [gastownPath, setGastownPath] = useState('');
   const [logFilePath, setLogFilePath] = useState('');
   const [wslDistro, setWslDistro] = useState('');
 
   useEffect(() => {
     if (settings) {
       setDefaultMode(settings.defaultMode);
-      setGastownPath(settings.gastownPath);
       setLogFilePath(settings.logFilePath || '');
       setWslDistro(settings.wsl?.distro || '');
     }
@@ -46,7 +44,6 @@ export default function Settings() {
   const handleSave = () => {
     saveMutation.mutate({
       defaultMode,
-      gastownPath,
       logFilePath,
       'wsl.distro': wslDistro,
     });
@@ -144,28 +141,6 @@ export default function Settings() {
                 </span>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Gas Town Path Card */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <Folder size={18} className="text-purple-400" />
-            </div>
-            <h3 className="font-semibold text-white">Workspace Path</h3>
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wide">Gas Town Directory</label>
-            <input
-              type="text"
-              value={gastownPath}
-              onChange={(e) => setGastownPath(e.target.value)}
-              placeholder="C:\Users\username\gt"
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-            />
-            <p className="text-xs text-slate-500 mt-2">Where Gas Town stores projects and data</p>
           </div>
         </div>
 
@@ -724,8 +699,6 @@ interface DebugInfo {
   nodeVersion: string;
   platform: string;
   claudePath: string;
-  gastownPath: string;
-  gastownExists: boolean;
   executionMode: 'linux';
 }
 
@@ -734,12 +707,6 @@ function DebugCard() {
     queryKey: ['debug-info'],
     queryFn: () => api.getDebugInfo() as Promise<DebugInfo>,
   });
-
-  const StatusIcon = ({ exists }: { exists: boolean }) => (
-    exists
-      ? <CheckCircle size={14} className="text-green-400" />
-      : <XCircle size={14} className="text-red-400" />
-  );
 
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-5">
@@ -780,14 +747,6 @@ function DebugCard() {
           <div className="p-3 bg-slate-900 rounded-lg">
             <p className="text-xs text-slate-400 uppercase mb-1">Claude Code CLI</p>
             <p className="text-white font-mono text-xs break-all">{debugInfo.claudePath}</p>
-          </div>
-
-          <div className="p-3 bg-slate-900 rounded-lg">
-            <div className="flex items-center gap-2 mb-1">
-              <StatusIcon exists={debugInfo.gastownExists} />
-              <p className="text-xs text-slate-400 uppercase">Gas Town Workspace</p>
-            </div>
-            <p className="text-white font-mono text-xs break-all">{debugInfo.gastownPath}</p>
           </div>
         </div>
       ) : (
