@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { useState, useCallback, useEffect } from 'react';
 import TopBar from './TopBar';
 import Sidebar from './Sidebar';
+import DiagnosticsBar from './DiagnosticsBar';
 
 export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -30,6 +31,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <DiagnosticsBar />
     </div>
   );
 }
