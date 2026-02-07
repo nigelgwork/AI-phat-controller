@@ -25,7 +25,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // GET /:id - get a specific terminal session
 router.get('/:id', asyncHandler(async (req, res) => {
-  const session = terminalManager.get(req.params.id);
+  const session = terminalManager.get(String(req.params.id));
   if (!session) {
     res.status(404).json({ error: 'Terminal session not found' });
     return;
@@ -36,14 +36,14 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // GET /:id/output - get terminal output
 router.get('/:id/output', asyncHandler(async (req, res) => {
   const sinceIndex = req.query.since ? Number(req.query.since) : undefined;
-  const output = terminalManager.getOutput(req.params.id, sinceIndex);
+  const output = terminalManager.getOutput(String(req.params.id), sinceIndex);
   res.json({ lines: output });
 }));
 
 // POST /:id/send - send input to terminal
 router.post('/:id/send', asyncHandler(async (req, res) => {
   const { text } = req.body;
-  const success = terminalManager.sendInput(req.params.id, text);
+  const success = terminalManager.sendInput(String(req.params.id), text);
   if (!success) {
     res.status(400).json({ error: 'Cannot send input to terminal' });
     return;
@@ -53,7 +53,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
 
 // DELETE /:id - close a terminal session
 router.delete('/:id', asyncHandler(async (req, res) => {
-  const success = terminalManager.close(req.params.id);
+  const success = terminalManager.close(String(req.params.id));
   if (!success) {
     res.status(404).json({ error: 'Terminal session not found' });
     return;

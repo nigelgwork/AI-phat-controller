@@ -7,9 +7,9 @@ import {
   History,
   Bot,
   Plug,
+  Sparkles,
   Crown,
   Terminal,
-  Settings,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -50,6 +50,7 @@ const sections: NavSection[] = [
     items: [
       { to: '/resources/agents', icon: Bot, label: 'Agents' },
       { to: '/resources/mcp', icon: Plug, label: 'MCP' },
+      { to: '/resources/skills', icon: Sparkles, label: 'Skills' },
     ],
   },
   {
@@ -61,7 +62,7 @@ const sections: NavSection[] = [
   {
     title: 'CONTROLLER',
     items: [
-      { to: '/controller', icon: Crown, label: 'Phat Controller' },
+      { to: '/controller', icon: Crown, label: 'Controller' },
     ],
   },
 ];
@@ -73,18 +74,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         collapsed ? 'w-16' : 'w-52'
       } bg-slate-800 border-r border-slate-700 flex flex-col transition-all duration-200 flex-shrink-0`}
     >
-      {/* Logo */}
-      <div className={`flex items-center ${collapsed ? 'justify-center' : 'px-4'} h-14 border-b border-slate-700`}>
-        <div className="w-8 h-8 rounded-lg bg-cyan-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-          AI
-        </div>
-        {!collapsed && (
-          <span className="ml-3 text-sm font-semibold text-white whitespace-nowrap">
-            Phat Controller
-          </span>
-        )}
-      </div>
-
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
         {sections.map((section) => (
@@ -117,22 +106,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Settings + Collapse */}
+      {/* Collapse */}
       <div className="border-t border-slate-700 py-2">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            `flex items-center gap-3 mx-2 px-2 py-2 rounded-lg text-sm transition-colors ${
-              isActive
-                ? 'bg-cyan-500/15 text-cyan-400'
-                : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
-            } ${collapsed ? 'justify-center' : ''}`
-          }
-          title="Settings"
-        >
-          <Settings size={18} className="flex-shrink-0" />
-          {!collapsed && <span>Settings</span>}
-        </NavLink>
         <button
           onClick={onToggle}
           className={`flex items-center gap-3 mx-2 px-2 py-2 rounded-lg text-sm text-slate-500 hover:bg-slate-700/50 hover:text-slate-300 transition-colors w-[calc(100%-1rem)] ${

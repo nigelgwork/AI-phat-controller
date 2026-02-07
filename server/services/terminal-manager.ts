@@ -67,7 +67,7 @@ class TerminalManager extends EventEmitter {
     const session = {
       process: child,
       config,
-      status: 'running' as const,
+      status: 'running' as 'running' | 'exited',
       startedAt: new Date().toISOString(),
       exitCode: undefined as number | undefined,
       outputLines: [] as string[],

@@ -11,7 +11,7 @@ export default function TopBar() {
   const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api.getVersion().then(setVersion);
+    api.getVersion().then((data: any) => setVersion(typeof data === 'string' ? data : data.version));
   }, []);
 
   // Close dropdown when clicking outside
@@ -39,11 +39,6 @@ export default function TopBar() {
     <header className="h-12 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-4 flex-shrink-0">
       <div className="flex items-center gap-3">
         <h1 className="text-sm font-medium text-slate-300">AI Phat Controller</h1>
-        {version && (
-          <span className="text-[10px] text-slate-600 font-mono bg-slate-800 px-1.5 py-0.5 rounded">
-            v{version}
-          </span>
-        )}
       </div>
 
       <div className="flex items-center gap-1">
@@ -110,6 +105,11 @@ export default function TopBar() {
         >
           <Settings size={16} />
         </Link>
+
+        {/* Version - always visible */}
+        <span className="text-[10px] text-slate-500 font-mono ml-2 select-none">
+          {version ? `v${version}` : '...'}
+        </span>
       </div>
     </header>
   );

@@ -8,9 +8,10 @@ import NewProject from './pages/NewProject';
 import Sessions from './pages/Sessions';
 import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
-import ActivityLog from './pages/ActivityLog';
+import History from './pages/History';
 import Settings from './pages/Settings';
 import Terminals from './pages/Terminals';
+import Skills from './pages/Skills';
 import ErrorBoundary from './components/ErrorBoundary';
 import CommandPalette from './components/CommandPalette';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -34,9 +35,10 @@ function App() {
           <Route path="projects/new" element={<NewProject />} />
           <Route path="projects/tasks" element={<Tasks />} />
           <Route path="projects/sessions" element={<Sessions />} />
-          <Route path="projects/history" element={<ActivityLog />} />
+          <Route path="projects/history" element={<History />} />
           <Route path="resources/agents" element={<Agents />} />
           <Route path="resources/mcp" element={<Settings />} />
+          <Route path="resources/skills" element={<Skills />} />
           <Route path="terminals" element={<Terminals />} />
           <Route path="settings" element={<Settings />} />
         </Route>

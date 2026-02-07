@@ -34,11 +34,12 @@ describe('Layout Component', () => {
     });
   });
 
-  it('displays the AI logo', async () => {
+  it('displays the sidebar', async () => {
     render(<Layout />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(screen.getByText('AI')).toBeInTheDocument();
+      const aside = document.querySelector('aside');
+      expect(aside).toBeInTheDocument();
     });
   });
 
@@ -57,12 +58,11 @@ describe('Layout Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Overview')).toBeInTheDocument();
-      expect(screen.getAllByText('Phat Controller').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Controller')).toBeInTheDocument();
       expect(screen.getByText('Projects')).toBeInTheDocument();
       expect(screen.getByText('Sessions')).toBeInTheDocument();
       expect(screen.getByText('Agents')).toBeInTheDocument();
       expect(screen.getByText('Tasks')).toBeInTheDocument();
-      expect(screen.getAllByText('Settings').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -71,18 +71,14 @@ describe('Layout Component', () => {
 
     await waitFor(() => {
       const overviewLink = screen.getByTitle('Overview');
-      const controllerLink = screen.getByTitle('Phat Controller');
+      const controllerLink = screen.getByTitle('Controller');
       const projectsLink = screen.getByTitle('Projects');
-      const settingsLinks = screen.getAllByTitle('Settings');
+      const settingsLink = screen.getByTitle('Settings');
 
       expect(overviewLink).toHaveAttribute('href', '/');
       expect(controllerLink).toHaveAttribute('href', '/controller');
       expect(projectsLink).toHaveAttribute('href', '/projects');
-      // Settings appears in both sidebar and top bar
-      expect(settingsLinks.length).toBeGreaterThanOrEqual(2);
-      settingsLinks.forEach((link) => {
-        expect(link).toHaveAttribute('href', '/settings');
-      });
+      expect(settingsLink).toHaveAttribute('href', '/settings');
     });
   });
 
@@ -92,15 +88,6 @@ describe('Layout Component', () => {
     await waitFor(() => {
       const mainElement = document.querySelector('main');
       expect(mainElement).toBeInTheDocument();
-    });
-  });
-
-  it('renders the sidebar', async () => {
-    render(<Layout />, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      const asideElement = document.querySelector('aside');
-      expect(asideElement).toBeInTheDocument();
     });
   });
 
