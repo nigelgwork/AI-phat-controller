@@ -18,18 +18,26 @@ interface SystemMetrics {
   };
 }
 
-interface UsageLimitConfig {
-  maxTokensPerHour: number;
-  maxTokensPerDay: number;
-  warningThreshold: number;
-  pauseThreshold: number;
-  autoResumeOnReset: boolean;
+interface ClaudeUsage {
+  subscription: string;
+  rateLimitTier: string;
+  today: { tokens: number; messages: number };
+  week: { tokens: number };
+  modelBreakdown: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
+  lastUpdated: string;
+  projects: number;
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
   if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))}MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
+}
+
+function formatTokens(count: number): string {
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
 }
 
 function formatUptime(seconds: number): string {
@@ -40,24 +48,35 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
-function getResetTime(type: 'hourly' | 'daily'): string {
+function getSessionResetTime(): string {
   const now = new Date();
-  if (type === 'hourly') {
-    const minsLeft = 60 - now.getMinutes();
-    return `${minsLeft} min`;
-  }
-  const nextReset = new Date(now);
-  nextReset.setDate(nextReset.getDate() + 1);
-  nextReset.setHours(0, 0, 0, 0);
-  const hoursLeft = Math.ceil((nextReset.getTime() - now.getTime()) / 3600000);
-  if (hoursLeft <= 1) return '<1 hr';
-  return `${hoursLeft} hrs`;
+  // Claude session limits reset every 5 hours
+  const periodMs = 5 * 60 * 60 * 1000;
+  const msIntoCurrentPeriod = now.getTime() % periodMs;
+  const msRemaining = periodMs - msIntoCurrentPeriod;
+  const minsRemaining = Math.floor(msRemaining / 60000);
+  if (minsRemaining < 60) return `${minsRemaining} min`;
+  const hrs = Math.floor(minsRemaining / 60);
+  const mins = minsRemaining % 60;
+  return `${hrs}h ${mins}m`;
 }
 
-function usageColor(percent: number): string {
-  if (percent >= 80) return 'text-red-400';
-  if (percent >= 60) return 'text-yellow-400';
-  return 'text-green-400';
+function getWeeklyResetTime(): string {
+  const now = new Date();
+  // Weekly limits reset on a weekly cadence
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const daysUntilReset = (7 - dayOfWeek) % 7 || 7;
+  if (daysUntilReset === 1) return 'tomorrow';
+  if (daysUntilReset <= 2) return `${daysUntilReset} days`;
+  const resetDate = new Date(now.getTime() + daysUntilReset * 86400000);
+  return resetDate.toLocaleDateString([], { weekday: 'short' });
+}
+
+function subscriptionLabel(sub: string): string {
+  if (sub === 'max') return 'Max';
+  if (sub === 'pro') return 'Pro';
+  if (sub === 'team') return 'Team';
+  return sub;
 }
 
 export default function DiagnosticsBar() {
@@ -67,20 +86,11 @@ export default function DiagnosticsBar() {
     refetchInterval: 5000,
   });
 
-  const { data: usagePercent } = useQuery<{ hourly: number; daily: number }>({
-    queryKey: ['usage-percentages-bar'],
-    queryFn: () => api.getUsagePercentages(),
-    refetchInterval: 10000,
+  const { data: usage } = useQuery<ClaudeUsage>({
+    queryKey: ['claude-usage'],
+    queryFn: () => api.getClaudeUsage(),
+    refetchInterval: 60000, // Update every minute
   });
-
-  const { data: limitConfig } = useQuery<UsageLimitConfig>({
-    queryKey: ['usage-limit-config-bar'],
-    queryFn: () => api.getUsageLimitConfig(),
-    staleTime: 60000,
-  });
-
-  const hourly = usagePercent?.hourly ?? 0;
-  const daily = usagePercent?.daily ?? 0;
 
   return (
     <footer className="h-7 bg-slate-800 border-t border-slate-700 flex items-center justify-between px-4 text-[11px] text-slate-500 flex-shrink-0 font-mono">
@@ -107,26 +117,34 @@ export default function DiagnosticsBar() {
         )}
       </div>
       <div className="flex items-center gap-4">
-        {/* Hourly usage */}
-        <span
-          className="flex items-center gap-1"
-          title={`Hourly limit: ${limitConfig ? `${(limitConfig.maxTokensPerHour / 1000).toFixed(0)}K tokens` : '...'}`}
-        >
-          <Zap size={11} />
-          Session:
-          <span className={usageColor(hourly)}>{hourly}%</span>
-          <span className="text-slate-600">resets {getResetTime('hourly')}</span>
-        </span>
-        <span className="text-slate-600">|</span>
-        {/* Daily usage */}
-        <span
-          className="flex items-center gap-1"
-          title={`Daily limit: ${limitConfig ? `${(limitConfig.maxTokensPerDay / 1000).toFixed(0)}K tokens` : '...'}`}
-        >
-          Weekly:
-          <span className={usageColor(daily)}>{daily}%</span>
-          <span className="text-slate-600">resets {getResetTime('daily')}</span>
-        </span>
+        {usage && (
+          <>
+            {usage.subscription !== 'unknown' && (
+              <>
+                <span className="text-slate-400">
+                  Claude {subscriptionLabel(usage.subscription)}
+                </span>
+                <span className="text-slate-600">|</span>
+              </>
+            )}
+            <span
+              className="flex items-center gap-1"
+              title={`Today: ${formatTokens(usage.today.tokens)} tokens, ${usage.today.messages} messages\nResets ${getSessionResetTime()}`}
+            >
+              <Zap size={11} />
+              Session: {formatTokens(usage.today.tokens)} tokens
+              <span className="text-slate-600">resets {getSessionResetTime()}</span>
+            </span>
+            <span className="text-slate-600">|</span>
+            <span
+              className="flex items-center gap-1"
+              title={`This week: ${formatTokens(usage.week.tokens)} tokens\nResets ${getWeeklyResetTime()}`}
+            >
+              Weekly: {formatTokens(usage.week.tokens)} tokens
+              <span className="text-slate-600">resets {getWeeklyResetTime()}</span>
+            </span>
+          </>
+        )}
       </div>
     </footer>
   );

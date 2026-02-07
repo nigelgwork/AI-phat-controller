@@ -233,6 +233,7 @@ export const serverApi = {
 
   // System metrics
   getSystemMetrics: () => apiGet('/system/metrics'),
+  getClaudeUsage: () => apiGet('/system/claude-usage'),
 
   // Terminals
   listTerminals: () => apiGet('/terminals'),
