@@ -8,6 +8,7 @@ import {
   Bot,
   Plug,
   Crown,
+  Terminal,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -49,6 +50,12 @@ const sections: NavSection[] = [
     items: [
       { to: '/resources/agents', icon: Bot, label: 'Agents' },
       { to: '/resources/mcp', icon: Plug, label: 'MCP' },
+    ],
+  },
+  {
+    title: 'TERMINALS',
+    items: [
+      { to: '/terminals', icon: Terminal, label: 'Terminals' },
     ],
   },
   {

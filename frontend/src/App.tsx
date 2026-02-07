@@ -10,6 +10,7 @@ import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
+import Terminals from './pages/Terminals';
 import ErrorBoundary from './components/ErrorBoundary';
 import CommandPalette from './components/CommandPalette';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -36,6 +37,7 @@ function App() {
           <Route path="projects/history" element={<ActivityLog />} />
           <Route path="resources/agents" element={<Agents />} />
           <Route path="resources/mcp" element={<Settings />} />
+          <Route path="terminals" element={<Terminals />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

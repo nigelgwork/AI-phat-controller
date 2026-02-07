@@ -234,6 +234,15 @@ export const serverApi = {
   // System metrics
   getSystemMetrics: () => apiGet('/system/metrics'),
 
+  // Terminals
+  listTerminals: () => apiGet('/terminals'),
+  launchTerminal: (config: any) => apiPost('/terminals', config),
+  getTerminal: (id: string) => apiGet(`/terminals/${id}`),
+  getTerminalOutput: (id: string, since?: number) =>
+    apiGet(`/terminals/${id}/output`, since !== undefined ? { since: String(since) } : undefined),
+  sendTerminalInput: (id: string, text: string) => apiPost(`/terminals/${id}/send`, { text }),
+  closeTerminal: (id: string) => apiDelete(`/terminals/${id}`),
+
   // Event listeners via WebSocket
   onSessionUpdate: (callback: (data: any) => void) => wsClient.subscribe('session:updated', callback),
   onSessionLog: (callback: (data: any) => void) => wsClient.subscribe('session:log', callback),

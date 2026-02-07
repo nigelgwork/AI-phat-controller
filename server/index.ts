@@ -27,6 +27,7 @@ import tokenHistoryRoutes from './routes/token-history';
 import activityRoutes from './routes/activity';
 import executionSessionsRoutes from './routes/execution-sessions';
 import systemRoutes from './routes/system';
+import terminalsRoutes from './routes/terminals';
 
 const log = createLogger('Server');
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -83,6 +84,7 @@ async function main() {
   app.use('/api/activity', activityRoutes);
   app.use('/api/sessions', executionSessionsRoutes);
   app.use('/api/system', systemRoutes);
+  app.use('/api/terminals', terminalsRoutes);
 
   // Serve frontend in production
   // In Docker: __dirname is /app/dist-server/server, frontend is at /app/dist
