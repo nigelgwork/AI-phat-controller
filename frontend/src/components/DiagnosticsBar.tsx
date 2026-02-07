@@ -21,11 +21,9 @@ interface SystemMetrics {
 interface ClaudeUsage {
   subscription: string;
   rateLimitTier: string;
-  today: { tokens: number; messages: number };
-  week: { tokens: number };
-  modelBreakdown: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
+  today: { tokens: number; messages: number; limit: number; percent: number };
+  week: { tokens: number; limit: number; percent: number };
   lastUpdated: string;
-  projects: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -50,7 +48,7 @@ function formatUptime(seconds: number): string {
 
 function getSessionResetTime(): string {
   const now = new Date();
-  // Claude session limits reset every 5 hours
+  // Session limits reset on a ~5hr rolling window
   const periodMs = 5 * 60 * 60 * 1000;
   const msIntoCurrentPeriod = now.getTime() % periodMs;
   const msRemaining = periodMs - msIntoCurrentPeriod;
@@ -63,13 +61,16 @@ function getSessionResetTime(): string {
 
 function getWeeklyResetTime(): string {
   const now = new Date();
-  // Weekly limits reset on a weekly cadence
-  const dayOfWeek = now.getDay(); // 0=Sun
+  const dayOfWeek = now.getDay();
   const daysUntilReset = (7 - dayOfWeek) % 7 || 7;
-  if (daysUntilReset === 1) return 'tomorrow';
-  if (daysUntilReset <= 2) return `${daysUntilReset} days`;
   const resetDate = new Date(now.getTime() + daysUntilReset * 86400000);
-  return resetDate.toLocaleDateString([], { weekday: 'short' });
+  return resetDate.toLocaleDateString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
+function usageColor(percent: number): string {
+  if (percent >= 80) return 'text-red-400';
+  if (percent >= 50) return 'text-yellow-400';
+  return 'text-green-400';
 }
 
 function subscriptionLabel(sub: string): string {
@@ -89,7 +90,7 @@ export default function DiagnosticsBar() {
   const { data: usage } = useQuery<ClaudeUsage>({
     queryKey: ['claude-usage'],
     queryFn: () => api.getClaudeUsage(),
-    refetchInterval: 60000, // Update every minute
+    refetchInterval: 60000,
   });
 
   return (
@@ -127,21 +128,25 @@ export default function DiagnosticsBar() {
                 <span className="text-slate-600">|</span>
               </>
             )}
+            {/* Session usage */}
             <span
               className="flex items-center gap-1"
-              title={`Today: ${formatTokens(usage.today.tokens)} tokens, ${usage.today.messages} messages\nResets ${getSessionResetTime()}`}
+              title={`Session: ${formatTokens(usage.today.tokens)} / ${formatTokens(usage.today.limit)} tokens\n${usage.today.messages} messages\nResets in ${getSessionResetTime()}`}
             >
               <Zap size={11} />
-              Session: {formatTokens(usage.today.tokens)} tokens
-              <span className="text-slate-600">resets {getSessionResetTime()}</span>
+              Session:
+              <span className={usageColor(usage.today.percent)}>{usage.today.percent}% used</span>
+              <span className="text-slate-600">· resets {getSessionResetTime()}</span>
             </span>
             <span className="text-slate-600">|</span>
+            {/* Weekly usage */}
             <span
               className="flex items-center gap-1"
-              title={`This week: ${formatTokens(usage.week.tokens)} tokens\nResets ${getWeeklyResetTime()}`}
+              title={`Weekly: ${formatTokens(usage.week.tokens)} / ${formatTokens(usage.week.limit)} tokens\nResets ${getWeeklyResetTime()}`}
             >
-              Weekly: {formatTokens(usage.week.tokens)} tokens
-              <span className="text-slate-600">resets {getWeeklyResetTime()}</span>
+              Weekly:
+              <span className={usageColor(usage.week.percent)}>{usage.week.percent}% used</span>
+              <span className="text-slate-600">· resets {getWeeklyResetTime()}</span>
             </span>
           </>
         )}

@@ -144,19 +144,22 @@ router.get('/claude-usage', asyncHandler(async (_req, res) => {
     log.warn('Could not read Claude stats-cache.json:', err);
   }
 
-  // Also count active sessions from the jsonl files in the current project
-  let activeSessionCount = 0;
-  try {
-    const projectsDir = path.join(claudeDir, 'projects');
-    if (fs.existsSync(projectsDir)) {
-      const projectDirs = fs.readdirSync(projectsDir);
-      activeSessionCount = projectDirs.filter(d =>
-        fs.statSync(path.join(projectsDir, d)).isDirectory()
-      ).length;
-    }
-  } catch {
-    // ignore
-  }
+  // Estimated plan limits based on subscription tier
+  // These are approximate — Anthropic doesn't expose exact limits via any local API.
+  // Session = 5-hour rolling window, Weekly = 7-day rolling window.
+  // Limits are in output tokens (the primary metered resource).
+  const tierLimits: Record<string, { session: number; weekly: number }> = {
+    'default_claude_max_5x':   { session: 2_000_000, weekly: 25_000_000 },
+    'default_claude_max_20x':  { session: 8_000_000, weekly: 100_000_000 },
+    'default_claude_pro':      { session: 400_000,   weekly: 5_000_000 },
+    'default_claude_team':     { session: 600_000,   weekly: 7_500_000 },
+  };
+  const defaultLimits = { session: 400_000, weekly: 5_000_000 };
+  const limits = tierLimits[rateLimitTier] || defaultLimits;
+
+  // Calculate percentages
+  const sessionPercent = Math.min(100, Math.round((todayTokens / limits.session) * 100));
+  const weeklyPercent = Math.min(100, Math.round((weekTokens / limits.weekly) * 100));
 
   res.json({
     subscription: subscriptionType,
@@ -164,13 +167,16 @@ router.get('/claude-usage', asyncHandler(async (_req, res) => {
     today: {
       tokens: todayTokens,
       messages: todayMessages,
+      limit: limits.session,
+      percent: sessionPercent,
     },
     week: {
       tokens: weekTokens,
+      limit: limits.weekly,
+      percent: weeklyPercent,
     },
     modelBreakdown,
     lastUpdated: lastComputedDate,
-    projects: activeSessionCount,
   });
 }));
 
