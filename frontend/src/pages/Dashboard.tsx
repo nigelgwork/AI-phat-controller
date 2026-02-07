@@ -145,19 +145,19 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-2">
               <div
                 className={`w-2 h-2 rounded-full ${
-                  modeStatus?.windows?.available ? 'bg-green-400' : 'bg-red-400'
+                  modeStatus?.linux?.available ? 'bg-green-400' : 'bg-red-400'
                 }`}
               />
-              <span className="font-medium">Windows</span>
-              {modeStatus?.current === 'windows' && (
+              <span className="font-medium">Claude Code</span>
+              {modeStatus?.linux?.available && (
                 <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded">
-                  Active
+                  Available
                 </span>
               )}
             </div>
-            {modeStatus?.windows?.available ? (
-              <p className="text-sm text-slate-400">
-                Claude: {modeStatus.windows.version || 'Available'}
+            {modeStatus?.linux?.available ? (
+              <p className="text-sm text-slate-400 font-mono text-xs truncate">
+                {modeStatus.linux.claudePath}
               </p>
             ) : (
               <p className="text-sm text-slate-500">Not detected</p>
@@ -167,22 +167,22 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-2">
               <div
                 className={`w-2 h-2 rounded-full ${
-                  modeStatus?.wsl?.available ? 'bg-green-400' : 'bg-red-400'
+                  modeStatus?.wsl?.detected ? 'bg-green-400' : 'bg-slate-500'
                 }`}
               />
-              <span className="font-medium">WSL</span>
-              {modeStatus?.current === 'wsl' && (
+              <span className="font-medium">Environment</span>
+              {modeStatus?.current && (
                 <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded">
-                  Active
+                  {modeStatus.current.toUpperCase()}
                 </span>
               )}
             </div>
-            {modeStatus?.wsl?.available ? (
+            {modeStatus?.wsl?.detected ? (
               <p className="text-sm text-slate-400">
-                {modeStatus.wsl.distro}: {modeStatus.wsl.version || 'Available'}
+                {modeStatus.wsl.version || 'WSL'}
               </p>
             ) : (
-              <p className="text-sm text-slate-500">Not detected</p>
+              <p className="text-sm text-slate-500">Native Linux</p>
             )}
           </div>
         </div>

@@ -7,7 +7,7 @@ const log = createLogger('ModeDetection');
 const execAsync = promisify(exec);
 
 export interface ModeStatus {
-  current: 'linux' | 'windows-interop';
+  current: 'linux' | 'wsl' | 'windows-interop';
   linux: {
     available: boolean;
     claudePath?: string;
@@ -16,13 +16,34 @@ export interface ModeStatus {
   windowsInterop: {
     available: boolean;
   };
+  wsl: {
+    detected: boolean;
+    version?: string;
+  };
+}
+
+function detectWSL(): { detected: boolean; version?: string } {
+  try {
+    if (fs.existsSync('/proc/version')) {
+      const procVersion = fs.readFileSync('/proc/version', 'utf-8');
+      if (/microsoft|wsl/i.test(procVersion)) {
+        const wsl2 = /WSL2/i.test(procVersion);
+        return { detected: true, version: wsl2 ? 'WSL2' : 'WSL1' };
+      }
+    }
+  } catch { /* not WSL */ }
+  return { detected: false };
 }
 
 export async function detectModes(): Promise<ModeStatus> {
+  const wslInfo = detectWSL();
+  const isDocker = fs.existsSync('/.dockerenv');
+
   const status: ModeStatus = {
-    current: 'linux',
+    current: wslInfo.detected ? 'wsl' : 'linux',
     linux: { available: false },
     windowsInterop: { available: false },
+    wsl: wslInfo,
   };
 
   // Check native Claude
@@ -55,6 +76,14 @@ export async function detectModes(): Promise<ModeStatus> {
     // Not in WSL
   }
 
+  if (wslInfo.detected) {
+    log.info(`Running in ${wslInfo.version || 'WSL'}`);
+  } else if (isDocker) {
+    log.info('Running in Docker');
+  } else {
+    log.info('Running in native Linux');
+  }
+
   return status;
 }
 
@@ -68,14 +97,17 @@ export async function getDebugInfo() {
   } catch { /* ignore */ }
 
   const isDocker = fs.existsSync('/.dockerenv');
+  const wslInfo = detectWSL();
 
   return {
     isDocker,
+    isWSL: wslInfo.detected,
+    wslVersion: wslInfo.version,
     nodeVersion: process.version,
     platform: process.platform,
     claudePath,
     gastownPath,
     gastownExists: gastownPath ? fs.existsSync(gastownPath) : false,
-    executionMode: 'linux' as const,
+    executionMode: wslInfo.detected ? 'wsl' as const : 'linux' as const,
   };
 }

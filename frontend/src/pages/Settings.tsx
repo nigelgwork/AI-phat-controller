@@ -123,24 +123,24 @@ export default function Settings() {
             <div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
               <div className="flex items-center gap-2">
                 <Monitor size={16} className="text-slate-400" />
-                <span className="text-sm">Windows</span>
+                <span className="text-sm">Claude Code</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${modeStatus?.windows?.available ? 'bg-green-400' : 'bg-red-400'}`} />
-                <span className={`text-sm ${modeStatus?.windows?.available ? 'text-green-400' : 'text-red-400'}`}>
-                  {modeStatus?.windows?.available ? modeStatus.windows.version || 'Available' : 'Not found'}
+                <span className={`w-2 h-2 rounded-full ${modeStatus?.linux?.available ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className={`text-sm ${modeStatus?.linux?.available ? 'text-green-400' : 'text-red-400'}`}>
+                  {modeStatus?.linux?.available ? modeStatus.linux.version || modeStatus.linux.claudePath || 'Available' : 'Not found'}
                 </span>
               </div>
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
               <div className="flex items-center gap-2">
                 <Terminal size={16} className="text-slate-400" />
-                <span className="text-sm">WSL</span>
+                <span className="text-sm">Environment</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${modeStatus?.wsl?.available ? 'bg-green-400' : 'bg-red-400'}`} />
-                <span className={`text-sm ${modeStatus?.wsl?.available ? 'text-green-400' : 'text-red-400'}`}>
-                  {modeStatus?.wsl?.available ? modeStatus.wsl.distro : 'Not found'}
+                <span className={`w-2 h-2 rounded-full ${modeStatus?.wsl?.detected ? 'bg-green-400' : 'bg-slate-500'}`} />
+                <span className={`text-sm ${modeStatus?.wsl?.detected ? 'text-green-400' : 'text-slate-300'}`}>
+                  {modeStatus?.wsl?.detected ? modeStatus.wsl.version || 'WSL' : 'Linux'}
                 </span>
               </div>
             </div>
@@ -604,7 +604,7 @@ function AboutCard() {
   });
 
   useEffect(() => {
-    api.getVersion().then(setVersion);
+    api.getVersion().then((v: any) => setVersion(typeof v === 'object' ? v.version : v));
 
     // Get initial status
     api.getUpdateStatus().then((s) => {

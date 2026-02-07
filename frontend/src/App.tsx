@@ -1,6 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import { api } from './api';
+import { useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Controller from './pages/Controller';
@@ -10,7 +9,6 @@ import Sessions from './pages/Sessions';
 import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
 import Settings from './pages/Settings';
-import Setup from './pages/Setup';
 import ClawdbotSettings from './pages/ClawdbotSettings';
 import Clawdbot from './pages/Clawdbot';
 import ActivityLog from './pages/ActivityLog';
@@ -20,38 +18,13 @@ import CommandPalette from './components/CommandPalette';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
-  const [hasCompletedSetup, setHasCompletedSetup] = useState<boolean | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   // Initialize keyboard shortcuts
   useKeyboardShortcuts({
-    enabled: hasCompletedSetup === true,
+    enabled: true,
     onOpenCommandPalette: () => setIsCommandPaletteOpen(true),
   });
-
-  useEffect(() => {
-    // Check if setup has been completed
-    api.getSetting('hasCompletedSetup').then((completed) => {
-      setHasCompletedSetup(completed);
-    }).catch(() => {
-      // If API not available (dev mode), skip setup
-      setHasCompletedSetup(true);
-    });
-  }, []);
-
-  // Show loading while checking setup status
-  if (hasCompletedSetup === null) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-slate-900">
-        <div className="text-white">Loading...</div>
-      </div>
-    );
-  }
-
-  // Show setup wizard if not completed
-  if (!hasCompletedSetup) {
-    return <Setup onComplete={() => setHasCompletedSetup(true)} />;
-  }
 
   return (
     <ErrorBoundary>
